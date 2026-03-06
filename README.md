@@ -80,7 +80,7 @@ claude mcp add x402-wallet \
   -- npx x402-wallet-mcp
 ```
 
-With your own Privy credentials, you can recover your wallet at [home.privy.io](https://home.privy.io) using email/phone + 2FA.
+With your own Privy credentials, you can recover your wallet directly at [home.privy.io](https://home.privy.io) using email/phone + 2FA — independent of the x402 provisioning service.
 
 ## How It Works
 
