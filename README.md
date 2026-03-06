@@ -30,7 +30,9 @@ This project is the missing piece: an open-source MCP server that gives any AI a
 
 ## Features
 
-- **[Privy](https://www.privy.io/) server wallets** — keys never leave HSM/TEE, recoverable via email/phone + 2FA
+- **Zero-config wallets** — works out of the box with no API keys or signup required
+- **[Privy](https://www.privy.io/) HSM-backed keys** — keys never leave Privy's HSM/TEE infrastructure
+- **Two wallet modes** — Proxy (zero-config default) or Privy direct (bring your own credentials)
 - **Full x402 negotiation** — handles 402 → sign → retry automatically
 - **EVM exact + escrow** — EIP-3009 TransferWithAuthorization and ReceiveWithAuthorization
 - **Endpoint discovery** — fetches `.well-known/x402` documents and searches [x402scan.com](https://x402scan.com)
@@ -40,17 +42,12 @@ This project is the missing piece: an open-source MCP server that gives any AI a
 
 ## Quick Start
 
-### Prerequisites
-
-Sign up for a [Privy](https://www.privy.io/) account and create a server wallet app to get your `PRIVY_APP_ID` and `PRIVY_APP_SECRET`.
+No API keys or signup required. Just install and go:
 
 ### Claude Code
 
 ```bash
-claude mcp add x402-wallet \
-  -e PRIVY_APP_ID=your-app-id \
-  -e PRIVY_APP_SECRET=your-app-secret \
-  -- npx x402-wallet-mcp
+claude mcp add x402-wallet -- npx x402-wallet-mcp
 ```
 
 ### Cursor / Windsurf / Claude Desktop
@@ -62,19 +59,28 @@ Add to your MCP config file (`.mcp.json`, `~/.cursor/mcp.json`, or Claude Deskto
   "mcpServers": {
     "x402-wallet": {
       "command": "npx",
-      "args": ["x402-wallet-mcp"],
-      "env": {
-        "PRIVY_APP_ID": "your-app-id",
-        "PRIVY_APP_SECRET": "your-app-secret"
-      }
+      "args": ["x402-wallet-mcp"]
     }
   }
 }
 ```
 
-On first run the server creates a Privy server wallet. Send USDC on Base to the address it prints (in MCP client logs) and start making paid API calls.
+On first run an HSM-backed wallet is automatically provisioned via the [x402 provisioning service](https://x402.onchainexpat.com). Send USDC on Base to the address it prints (in MCP client logs) and start making paid API calls.
 
-Keys never leave Privy's infrastructure. The wallet ID is saved to `~/.x402-wallet/config.json` for reuse across sessions. You can recover your wallet anytime at [home.privy.io](https://home.privy.io).
+The wallet ID and secret are saved to `~/.x402-wallet/config.json` for reuse across sessions.
+
+### Power Users: Bring Your Own Privy Credentials
+
+For full control, sign up for a [Privy](https://www.privy.io/) account and pass your own credentials. This bypasses the proxy and talks directly to Privy:
+
+```bash
+claude mcp add x402-wallet \
+  -e PRIVY_APP_ID=your-app-id \
+  -e PRIVY_APP_SECRET=your-app-secret \
+  -- npx x402-wallet-mcp
+```
+
+With your own Privy credentials, you can recover your wallet at [home.privy.io](https://home.privy.io) using email/phone + 2FA.
 
 ## How It Works
 
@@ -189,13 +195,16 @@ The tool auto-detects which scheme to use based on the server's `accepts` array.
 
 | Variable | Purpose | Required |
 |----------|---------|----------|
-| `PRIVY_APP_ID` | Privy application ID | Yes |
-| `PRIVY_APP_SECRET` | Privy application secret | Yes |
+| `PRIVY_APP_ID` | Privy application ID (enables direct Privy mode) | No |
+| `PRIVY_APP_SECRET` | Privy application secret | No |
+| `X402_PROXY_URL` | Custom proxy URL (default: `https://x402.onchainexpat.com/api/wallet`) | No |
 | `X402_PER_CALL_MAX` | Max USDC per API call (e.g. `"10.00"`) | No |
 | `X402_DAILY_CAP` | Max USDC per day (e.g. `"100.00"`) | No |
 | `X402_RPC_URL` | Custom Base RPC endpoint | No |
 | `CDP_API_KEY_ID` | Coinbase onramp API key | No |
 | `CDP_API_KEY_SECRET` | Coinbase onramp API secret | No |
+
+**Wallet mode priority:** If `PRIVY_APP_ID` and `PRIVY_APP_SECRET` are set, the wallet connects directly to Privy. Otherwise, it uses the hosted proxy for zero-config operation.
 
 ### Data Directory
 
@@ -214,12 +223,14 @@ All persistent data is stored in `~/.x402-wallet/`:
 ```json
 {
   "version": 1,
-  "wallet": { "mode": "privy", "privyWalletId": null },
+  "wallet": { "mode": "proxy", "proxyWalletId": null, "proxyWalletSecret": null },
   "spending": { "perCallMaxUsdc": "5.00", "dailyCapUsdc": "50.00" },
   "endpointSources": ["https://x402.onchainexpat.com", "https://padelmaps.org"],
   "preferences": { "preferEscrow": false, "preferredNetwork": "evm" }
 }
 ```
+
+> **Note:** The default mode is `"proxy"` (zero-config). When `PRIVY_APP_ID` and `PRIVY_APP_SECRET` env vars are set, the wallet automatically switches to `"privy"` mode with `privyWalletId` instead.
 
 ## Architecture
 
@@ -232,9 +243,11 @@ x402-wallet-mcp/
 │   ├── server.ts                    # McpServer with 10 tools
 │   ├── wallet/
 │   │   ├── types.ts                 # WalletProvider interface
-│   │   ├── privy-wallet.ts          # Privy server wallets (HSM/TEE)
-│   │   ├── privy-api.ts             # Direct REST client for Privy API
-│   │   └── factory.ts               # Wallet creation
+│   │   ├── proxy-wallet.ts          # Zero-config wallet via hosted proxy
+│   │   ├── proxy-api.ts             # REST client for proxy service
+│   │   ├── privy-wallet.ts          # Direct Privy server wallets (HSM/TEE)
+│   │   ├── privy-api.ts             # REST client for Privy API
+│   │   └── factory.ts               # Wallet creation (proxy or privy)
 │   ├── payment/
 │   │   ├── evm-exact.ts             # EIP-3009 TransferWithAuthorization
 │   │   ├── evm-escrow.ts            # ReceiveWithAuthorization + nonce
@@ -258,7 +271,7 @@ x402-wallet-mcp/
 │       ├── http.ts                  # Fetch with timeout + retries
 │       └── format.ts                # USDC atomic ↔ human-readable
 └── tests/
-    ├── unit/                        # 98 tests across 13 files
+    ├── unit/                        # 105 tests across 14 files
     ├── integration/                 # Live endpoint tests (costs real USDC)
     └── e2e/                         # Full MCP server over stdio
 ```
@@ -294,7 +307,7 @@ npm run dev         # Run with tsx (auto-reloads)
 ### Testing
 
 ```bash
-# Unit tests (98 tests, no network calls, no USDC spent)
+# Unit tests (105 tests, no network calls, no USDC spent)
 npm test
 
 # Watch mode
@@ -309,7 +322,7 @@ RUN_E2E_TESTS=1 npx vitest run tests/e2e
 ```
 
 The unit test suite covers:
-- **Wallet**: Privy API mocking, factory creation
+- **Wallet**: Proxy + Privy API mocking, factory routing (env var detection)
 - **Payment**: EIP-3009 exact/escrow signing, escrow nonce determinism, full negotiator flow (402 → sign → retry), edge cases (double-402, empty accepts, spending limits)
 - **Spending**: per-call max, daily cap, midnight reset, env var overrides
 - **Discovery**: endpoint merging, deduplication, cache behavior, fetch failure handling
@@ -344,7 +357,8 @@ The server communicates over stdio (JSON-RPC), so you need an MCP client to inte
 > [!IMPORTANT]
 > This software manages real cryptocurrency. Review the [security policy](SECURITY.md) before using in production.
 
-- **Privy wallets**: Keys never leave Privy's HSM/TEE infrastructure. Recoverable via email/phone + 2FA at [home.privy.io](https://home.privy.io).
+- **HSM-backed keys**: Whether using proxy or direct Privy mode, keys never leave Privy's HSM/TEE infrastructure.
+- **Proxy signing validation**: The hosted proxy validates every signing request — only USDC transfers on Base, capped at 100 USDC per transaction.
 - **Spending limits**: Enforced locally before signing. Cannot be bypassed by the AI agent.
 - **No stdout leaks**: All logging goes to stderr. stdout is reserved for MCP JSON-RPC. Private keys never appear in logs.
 
@@ -362,7 +376,7 @@ Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines
 
 Before submitting a PR:
 
-1. Run `npm test` and ensure all 98 tests pass
+1. Run `npm test` and ensure all 105 tests pass
 2. Run `npm run lint` for type checking
 3. Add tests for new functionality
 4. Keep PRs focused — one feature or fix per PR
