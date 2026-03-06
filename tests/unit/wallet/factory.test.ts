@@ -37,6 +37,16 @@ vi.mock("../../../src/wallet/proxy-api.js", () => ({
   proxySignTypedData: vi.fn(),
 }));
 
+vi.mock("../../../src/wallet/link-api.js", () => ({
+  createLinkSession: vi.fn().mockResolvedValue({
+    session_id: "session-factory-test",
+    link_url: "https://x402.onchainexpat.com/link/session-factory-test",
+  }),
+  pollLinkStatus: vi.fn().mockResolvedValue({
+    status: "expired",
+  }),
+}));
+
 describe("wallet factory", () => {
   const originalEnv = { ...process.env };
 
@@ -62,9 +72,10 @@ describe("wallet factory", () => {
     expect(wallet.getEvmAddress()).toMatch(/^0x[0-9a-fA-F]{40}$/);
   });
 
-  it("creates a Proxy wallet when PRIVY env vars are missing", async () => {
+  it("creates a Proxy wallet when PRIVY env vars are missing and linking is skipped", async () => {
     delete process.env.PRIVY_APP_ID;
     delete process.env.PRIVY_APP_SECRET;
+    process.env.X402_SKIP_LINKING = "1";
 
     const { createWallet } = await import("../../../src/wallet/factory.js");
     const wallet = await createWallet();
@@ -82,6 +93,18 @@ describe("wallet factory", () => {
 
     // Should use Privy, not Proxy
     expect(wallet.mode).toBe("privy");
+  });
+
+  it("falls back to proxy when email linking expires", async () => {
+    delete process.env.PRIVY_APP_ID;
+    delete process.env.PRIVY_APP_SECRET;
+    delete process.env.X402_SKIP_LINKING;
+
+    const { createWallet } = await import("../../../src/wallet/factory.js");
+    const wallet = await createWallet();
+
+    // Link session mock returns expired, so should fall back to proxy
+    expect(wallet.mode).toBe("proxy");
   });
 
   it("getPrivyAuth throws when env vars are missing", () => {

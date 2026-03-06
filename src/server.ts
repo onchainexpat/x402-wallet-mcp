@@ -11,6 +11,7 @@ import { configureSpendingTool } from "./tools/configure-spending.js";
 import { addEndpointSourceTool } from "./tools/add-endpoint-source.js";
 import { manageAllowlistTool } from "./tools/manage-allowlist.js";
 import { fundWalletTool } from "./tools/fund-wallet.js";
+import { walletLinkTool } from "./tools/wallet-link.js";
 
 export function createServer(wallet: WalletProvider): McpServer {
   const server = new McpServer({
@@ -18,7 +19,7 @@ export function createServer(wallet: WalletProvider): McpServer {
     version: "0.1.0",
   });
 
-  // Register all 10 tools
+  // Register all 11 tools
   const walletInfo = walletInfoTool(wallet);
   server.tool(
     walletInfo.name,
@@ -175,6 +176,14 @@ export function createServer(wallet: WalletProvider): McpServer {
         .describe("USD amount to pre-fill (default: 25)"),
     },
     async (params) => fundWallet.handler(params),
+  );
+
+  const walletLink = walletLinkTool(wallet);
+  server.tool(
+    walletLink.name,
+    walletLink.description,
+    {},
+    async () => walletLink.handler(),
   );
 
   return server;

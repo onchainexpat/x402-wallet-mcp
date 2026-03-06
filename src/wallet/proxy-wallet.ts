@@ -12,15 +12,24 @@ import { logger } from "../utils/logger.js";
  * Zero-config: no Privy credentials needed on the client side.
  */
 export class ProxyWallet implements WalletProvider {
-  readonly mode = "proxy" as const;
+  readonly mode: "proxy" | "linked";
   private walletId: string;
   private walletSecret: string;
   private address: string;
+  private email?: string;
 
-  constructor(walletId: string, walletSecret: string, address: string) {
+  constructor(
+    walletId: string,
+    walletSecret: string,
+    address: string,
+    mode: "proxy" | "linked" = "proxy",
+    email?: string,
+  ) {
     this.walletId = walletId;
     this.walletSecret = walletSecret;
     this.address = address;
+    this.mode = mode;
+    this.email = email;
   }
 
   static async create(): Promise<ProxyWallet> {
@@ -81,9 +90,10 @@ export class ProxyWallet implements WalletProvider {
 
   describe(): WalletInfo {
     return {
-      mode: "proxy",
+      mode: this.mode,
       evmAddress: this.address,
       recoverable: true,
+      ...(this.email ? { linkedEmail: this.email } : {}),
     };
   }
 }

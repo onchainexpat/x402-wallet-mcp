@@ -2,10 +2,11 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { getConfigPath } from "./paths.js";
 
 export interface WalletConfig {
-  mode: "privy" | "proxy";
+  mode: "privy" | "proxy" | "linked";
   privyWalletId?: string | null;
   proxyWalletId?: string | null;
   proxyWalletSecret?: string | null;
+  linkedEmail?: string | null;
 }
 
 export interface SpendingConfig {

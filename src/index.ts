@@ -18,7 +18,9 @@ export async function main(): Promise<void> {
 
   logger.info(`Wallet ready: ${info.mode} mode`);
   logger.info(`EVM address: ${info.evmAddress}`);
-  if (info.mode === "proxy") {
+  if (info.mode === "linked") {
+    logger.info(`Wallet linked to ${info.linkedEmail || "email"} — recoverable via email verification`);
+  } else if (info.mode === "proxy") {
     logger.info("Using hosted proxy — set PRIVY_APP_ID and PRIVY_APP_SECRET for direct Privy access");
   }
   logger.info(`Send USDC on Base to ${info.evmAddress} to fund your wallet`);

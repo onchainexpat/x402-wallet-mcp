@@ -1,6 +1,6 @@
 import type { TypedDataDomain } from "viem";
 
-export type WalletMode = "privy" | "proxy";
+export type WalletMode = "privy" | "proxy" | "linked";
 
 export interface WalletProvider {
   mode: WalletMode;
@@ -24,4 +24,5 @@ export interface WalletInfo {
   mode: WalletMode;
   evmAddress: string;
   recoverable: boolean;
+  linkedEmail?: string;
 }
