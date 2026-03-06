@@ -1,0 +1,42 @@
+{
+  "name": "x402-wallet-mcp",
+  "version": "0.1.0",
+  "description": "Self-custodial USDC wallet + x402 payment signing as an MCP server for AI agents",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "x402-wallet-mcp": "./dist/bin/x402-wallet-mcp.js"
+  },
+  "main": "./dist/src/index.js",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx bin/x402-wallet-mcp.ts",
+    "start": "node dist/bin/x402-wallet-mcp.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:live": "RUN_LIVE_TESTS=1 vitest run tests/integration",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "qrcode": "^1.5.4",
+    "viem": "^2.21.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/qrcode": "^1.5.6",
+    "msw": "^2.7.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
