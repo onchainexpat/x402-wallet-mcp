@@ -24,7 +24,9 @@ export function walletInfoTool(wallet: WalletProvider) {
       ]);
 
       const recoveryNote =
-        "Your wallet is recoverable. Log in with the same email or phone number at https://home.privy.io, enter your 2FA code, and you can see your USDC balance and access your funds anytime.";
+        info.mode === "proxy"
+          ? "Wallet backed by Privy HSM via x402 provisioning service. For full control, set your own PRIVY_APP_ID and PRIVY_APP_SECRET."
+          : "Your wallet is recoverable. Log in with the same email or phone number at https://home.privy.io, enter your 2FA code, and you can see your USDC balance and access your funds anytime.";
 
       return {
         content: [

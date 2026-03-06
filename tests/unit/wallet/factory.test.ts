@@ -27,7 +27,19 @@ vi.mock("../../../src/wallet/privy-api.js", () => ({
   signTypedData: vi.fn(),
 }));
 
+vi.mock("../../../src/wallet/proxy-api.js", () => ({
+  proxyCreateWallet: vi.fn().mockResolvedValue({
+    wallet_id: "proxy-factory-456",
+    address: "0x2222222222222222222222222222222222222222",
+    wallet_secret: "factory-secret-abc",
+  }),
+  proxyGetWallet: vi.fn(),
+  proxySignTypedData: vi.fn(),
+}));
+
 describe("wallet factory", () => {
+  const originalEnv = { ...process.env };
+
   beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), "x402-factory-test-"));
   });
@@ -35,14 +47,41 @@ describe("wallet factory", () => {
   afterEach(() => {
     if (existsSync(tempDir)) rmSync(tempDir, { recursive: true });
     vi.clearAllMocks();
+    // Restore env
+    process.env = { ...originalEnv };
   });
 
-  it("creates a Privy wallet", async () => {
+  it("creates a Privy wallet when PRIVY env vars are set", async () => {
+    process.env.PRIVY_APP_ID = "test-app-id";
+    process.env.PRIVY_APP_SECRET = "test-app-secret";
+
     const { createWallet } = await import("../../../src/wallet/factory.js");
     const wallet = await createWallet();
 
     expect(wallet.mode).toBe("privy");
     expect(wallet.getEvmAddress()).toMatch(/^0x[0-9a-fA-F]{40}$/);
+  });
+
+  it("creates a Proxy wallet when PRIVY env vars are missing", async () => {
+    delete process.env.PRIVY_APP_ID;
+    delete process.env.PRIVY_APP_SECRET;
+
+    const { createWallet } = await import("../../../src/wallet/factory.js");
+    const wallet = await createWallet();
+
+    expect(wallet.mode).toBe("proxy");
+    expect(wallet.getEvmAddress()).toMatch(/^0x[0-9a-fA-F]{40}$/);
+  });
+
+  it("prefers Privy over Proxy when both could work", async () => {
+    process.env.PRIVY_APP_ID = "test-app-id";
+    process.env.PRIVY_APP_SECRET = "test-app-secret";
+
+    const { createWallet } = await import("../../../src/wallet/factory.js");
+    const wallet = await createWallet();
+
+    // Should use Privy, not Proxy
+    expect(wallet.mode).toBe("privy");
   });
 
   it("getPrivyAuth throws when env vars are missing", () => {

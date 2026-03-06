@@ -1,6 +1,6 @@
 import type { TypedDataDomain } from "viem";
 
-export type WalletMode = "privy";
+export type WalletMode = "privy" | "proxy";
 
 export interface WalletProvider {
   mode: WalletMode;
