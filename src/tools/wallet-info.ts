@@ -23,11 +23,14 @@ export function walletInfoTool(wallet: WalletProvider) {
         generateOnrampUrl(info.evmAddress),
       ]);
 
+      const isEmbedded = info.walletType === "embedded";
       const recoveryNote =
         info.mode === "linked"
-          ? `Wallet linked to ${info.linkedEmail || "your email"}. You can recover it by verifying the same email address. Your wallet_secret in ~/.x402-wallet/config.json is a backup — keep it safe.`
+          ? isEmbedded
+            ? `Embedded wallet linked to ${info.linkedEmail || "your email"}. Key exportable at https://home.privy.io — your funds are safe even if our server goes offline.`
+            : `Wallet linked to ${info.linkedEmail || "your email"}. You can recover it by verifying the same email address. Your wallet_secret in ~/.x402-wallet/config.json is a backup — keep it safe.`
           : info.mode === "proxy"
-            ? "Wallet backed by Privy HSM via x402 provisioning service. Your wallet_secret in ~/.x402-wallet/config.json is the key to your funds — back it up. For full control, set your own PRIVY_APP_ID and PRIVY_APP_SECRET."
+            ? "Wallet backed by Privy HSM via x402 provisioning service. Link your email with wallet_link to enable key export via home.privy.io."
             : "Your wallet is recoverable. Log in with the same email or phone number at https://home.privy.io, enter your 2FA code, and you can see your USDC balance and access your funds anytime.";
 
       return {
@@ -37,6 +40,7 @@ export function walletInfoTool(wallet: WalletProvider) {
             text: JSON.stringify(
               {
                 mode: info.mode,
+                walletType: info.walletType || "server",
                 evmAddress: info.evmAddress,
                 recoverable: info.recoverable,
                 recoveryNote,

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -8,6 +8,7 @@ let tempDir: string;
 vi.mock("../../../src/store/paths.js", () => ({
   getDataDir: () => tempDir,
   getConfigPath: () => join(tempDir, "config.json"),
+  getConfigBackupPath: () => join(tempDir, "config.json.bak"),
   getHistoryPath: () => join(tempDir, "history.jsonl"),
   getSpendingPath: () => join(tempDir, "spending.json"),
   getEndpointsCachePath: () => join(tempDir, "endpoints-cache.json"),
@@ -45,6 +46,9 @@ vi.mock("../../../src/wallet/link-api.js", () => ({
   pollLinkStatus: vi.fn().mockResolvedValue({
     status: "expired",
   }),
+  initiateRecovery: vi.fn().mockRejectedValue(
+    new Error("Recovery not available in test"),
+  ),
 }));
 
 describe("wallet factory", () => {
@@ -72,7 +76,7 @@ describe("wallet factory", () => {
     expect(wallet.getEvmAddress()).toMatch(/^0x[0-9a-fA-F]{40}$/);
   });
 
-  it("creates a Proxy wallet when PRIVY env vars are missing and linking is skipped", async () => {
+  it("creates a Proxy wallet when PRIVY env vars are missing, no existing wallet, and linking is skipped", async () => {
     delete process.env.PRIVY_APP_ID;
     delete process.env.PRIVY_APP_SECRET;
     process.env.X402_SKIP_LINKING = "1";
@@ -95,7 +99,7 @@ describe("wallet factory", () => {
     expect(wallet.mode).toBe("privy");
   });
 
-  it("falls back to proxy when email linking expires", async () => {
+  it("falls back to proxy when email linking expires (no existing wallet)", async () => {
     delete process.env.PRIVY_APP_ID;
     delete process.env.PRIVY_APP_SECRET;
     delete process.env.X402_SKIP_LINKING;
@@ -103,9 +107,113 @@ describe("wallet factory", () => {
     const { createWallet } = await import("../../../src/wallet/factory.js");
     const wallet = await createWallet();
 
-    // Link session mock returns expired, so should fall back to proxy
+    // Link session mock returns expired, no existing wallet → falls back to proxy
     expect(wallet.mode).toBe("proxy");
   });
+
+  it("existing linked wallet + API failure → throws (not falls through)", async () => {
+    delete process.env.PRIVY_APP_ID;
+    delete process.env.PRIVY_APP_SECRET;
+    process.env.X402_SKIP_LINKING = "1";
+
+    writeFileSync(
+      join(tempDir, "config.json"),
+      JSON.stringify({
+        version: 1,
+        wallet: {
+          mode: "linked",
+          proxyWalletId: "linked-wallet-001",
+          proxyWalletSecret: "linked-secret",
+          linkedEmail: "user@example.com",
+        },
+        spending: { perCallMaxUsdc: "5.00", dailyCapUsdc: "50.00" },
+        endpointSources: [],
+        customEndpoints: [],
+        preferences: { preferEscrow: false, preferredNetwork: "evm" },
+        allowlist: { enabled: true, merchants: [] },
+      }),
+    );
+
+    const proxyApi = await import("../../../src/wallet/proxy-api.js");
+    vi.mocked(proxyApi.proxyGetWallet).mockRejectedValue(
+      new Error("Service unavailable"),
+    );
+
+    const { createWallet } = await import("../../../src/wallet/factory.js");
+    await expect(createWallet()).rejects.toThrow("Could not load linked wallet");
+    expect(proxyApi.proxyCreateWallet).not.toHaveBeenCalled();
+  });
+
+  it("existing proxy wallet + API failure → throws", async () => {
+    delete process.env.PRIVY_APP_ID;
+    delete process.env.PRIVY_APP_SECRET;
+    process.env.X402_SKIP_LINKING = "1";
+
+    writeFileSync(
+      join(tempDir, "config.json"),
+      JSON.stringify({
+        version: 1,
+        wallet: {
+          mode: "proxy",
+          proxyWalletId: "proxy-wallet-001",
+          proxyWalletSecret: "proxy-secret",
+        },
+        spending: { perCallMaxUsdc: "5.00", dailyCapUsdc: "50.00" },
+        endpointSources: [],
+        customEndpoints: [],
+        preferences: { preferEscrow: false, preferredNetwork: "evm" },
+        allowlist: { enabled: true, merchants: [] },
+      }),
+    );
+
+    const proxyApi = await import("../../../src/wallet/proxy-api.js");
+    vi.mocked(proxyApi.proxyGetWallet).mockRejectedValue(
+      new Error("Service unavailable"),
+    );
+
+    const { createWallet } = await import("../../../src/wallet/factory.js");
+    await expect(createWallet()).rejects.toThrow("Could not load proxy wallet");
+    expect(proxyApi.proxyCreateWallet).not.toHaveBeenCalled();
+  });
+
+  it("retry: first call fails, second succeeds → loads wallet", async () => {
+    delete process.env.PRIVY_APP_ID;
+    delete process.env.PRIVY_APP_SECRET;
+    process.env.X402_SKIP_LINKING = "1";
+
+    writeFileSync(
+      join(tempDir, "config.json"),
+      JSON.stringify({
+        version: 1,
+        wallet: {
+          mode: "proxy",
+          proxyWalletId: "proxy-retry-wallet",
+          proxyWalletSecret: "retry-secret",
+        },
+        spending: { perCallMaxUsdc: "5.00", dailyCapUsdc: "50.00" },
+        endpointSources: [],
+        customEndpoints: [],
+        preferences: { preferEscrow: false, preferredNetwork: "evm" },
+        allowlist: { enabled: true, merchants: [] },
+      }),
+    );
+
+    const proxyApi = await import("../../../src/wallet/proxy-api.js");
+    vi.mocked(proxyApi.proxyGetWallet)
+      .mockRejectedValueOnce(new Error("Temporary failure"))
+      .mockResolvedValueOnce({
+        id: "proxy-retry-wallet",
+        address: "0x9999999999999999999999999999999999999999",
+        chain_type: "ethereum",
+      });
+
+    const { createWallet } = await import("../../../src/wallet/factory.js");
+    const wallet = await createWallet();
+
+    expect(wallet.getEvmAddress()).toBe("0x9999999999999999999999999999999999999999");
+    expect(proxyApi.proxyGetWallet).toHaveBeenCalledTimes(2);
+    expect(proxyApi.proxyCreateWallet).not.toHaveBeenCalled();
+  }, 15000);
 
   it("getPrivyAuth throws when env vars are missing", () => {
     // Test the real implementation directly

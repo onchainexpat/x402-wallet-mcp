@@ -18,6 +18,9 @@ export interface WalletProvider {
 
   /** Describe the wallet for display */
   describe(): WalletInfo;
+
+  /** Get proxy wallet credentials (only for proxy/linked wallets) */
+  getProxyCredentials?(): { walletId: string; walletSecret: string } | null;
 }
 
 export interface WalletInfo {
@@ -25,4 +28,5 @@ export interface WalletInfo {
   evmAddress: string;
   recoverable: boolean;
   linkedEmail?: string;
+  walletType?: "server" | "embedded";
 }

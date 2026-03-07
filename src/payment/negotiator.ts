@@ -97,7 +97,13 @@ export async function makePaymentCall(
 
   // If not 402, return the response as-is
   if (initialResponse.status !== 402) {
-    const data = await initialResponse.json().catch(() => initialResponse.text());
+    const text = await initialResponse.text();
+    let data: unknown;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = text;
+    }
     return {
       success: initialResponse.ok,
       status: initialResponse.status,
@@ -119,6 +125,23 @@ export async function makePaymentCall(
     }
   } else {
     paymentRequired = await initialResponse.json();
+  }
+
+  // Normalize v2 paymentOptions to v1 accepts format
+  const raw = paymentRequired as unknown as Record<string, unknown>;
+  if (!paymentRequired.accepts && Array.isArray(raw.paymentOptions)) {
+    paymentRequired.accepts = (raw.paymentOptions as Record<string, unknown>[]).map(
+      (opt) => ({
+        scheme: ((opt.scheme as string) ?? "exact") as "exact" | "escrow",
+        network: opt.network as string,
+        amount: (opt.priceAtomic as string) ?? (opt.amount as string) ?? "0",
+        maxAmountRequired: opt.maxAmountRequired as string | undefined,
+        payTo: opt.payTo as string,
+        asset: opt.asset as string,
+        maxTimeoutSeconds: opt.maxTimeoutSeconds as number | undefined,
+        extra: opt.extra as AcceptEntry["extra"],
+      }),
+    );
   }
 
   const accepts = paymentRequired.accepts;
@@ -211,7 +234,13 @@ export async function makePaymentCall(
     retries: 0, // Don't retry after signing — authorization might be consumed
   });
 
-  const responseData = await paidResponse.json().catch(() => paidResponse.text());
+  const responseText = await paidResponse.text();
+  let responseData: unknown;
+  try {
+    responseData = JSON.parse(responseText);
+  } catch {
+    responseData = responseText;
+  }
 
   // Step 7: Check for double-402
   if (paidResponse.status === 402) {

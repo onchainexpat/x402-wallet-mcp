@@ -8,6 +8,7 @@ let tempDir: string;
 vi.mock("../../../src/store/paths.js", () => ({
   getDataDir: () => tempDir,
   getConfigPath: () => join(tempDir, "config.json"),
+  getConfigBackupPath: () => join(tempDir, "config.json.bak"),
   getHistoryPath: () => join(tempDir, "history.jsonl"),
   getSpendingPath: () => join(tempDir, "spending.json"),
   getEndpointsCachePath: () => join(tempDir, "endpoints-cache.json"),
@@ -41,20 +42,6 @@ vi.mock("../../../src/wallet/proxy-api.js", () => ({
   proxySignTypedData: vi.fn(),
 }));
 
-vi.mock("../../../src/wallet/link-api.js", () => ({
-  createLinkSession: vi.fn().mockResolvedValue({
-    session_id: "session-test-123",
-    link_url: "https://x402.onchainexpat.com/link/session-test-123",
-  }),
-  pollLinkStatus: vi.fn().mockResolvedValue({
-    status: "completed",
-    wallet_id: "linked-wallet-001",
-    address: "0x4444444444444444444444444444444444444444",
-    wallet_secret: "linked-secret-xyz",
-    email: "test@example.com",
-  }),
-}));
-
 describe("email linking flow", () => {
   const originalEnv = { ...process.env };
 
@@ -68,25 +55,16 @@ describe("email linking flow", () => {
     process.env = { ...originalEnv };
   });
 
-  it("new wallet triggers email linking and saves linked config", async () => {
+  it("new wallet falls back to anonymous proxy (no auto-linking)", async () => {
     delete process.env.PRIVY_APP_ID;
     delete process.env.PRIVY_APP_SECRET;
-    delete process.env.X402_SKIP_LINKING;
 
     const { createWallet } = await import("../../../src/wallet/factory.js");
     const wallet = await createWallet();
 
-    expect(wallet.mode).toBe("linked");
-    expect(wallet.getEvmAddress()).toBe("0x4444444444444444444444444444444444444444");
-
-    const info = wallet.describe();
-    expect(info.linkedEmail).toBe("test@example.com");
-
-    // Verify config was saved
-    const config = JSON.parse(readFileSync(join(tempDir, "config.json"), "utf-8"));
-    expect(config.wallet.mode).toBe("linked");
-    expect(config.wallet.linkedEmail).toBe("test@example.com");
-    expect(config.wallet.proxyWalletId).toBe("linked-wallet-001");
+    // Factory no longer does auto-linking — falls back to anonymous proxy
+    expect(wallet.mode).toBe("proxy");
+    expect(wallet.getEvmAddress()).toBe("0x2222222222222222222222222222222222222222");
   });
 
   it("skips linking when X402_SKIP_LINKING is set and falls back to proxy", async () => {
@@ -94,12 +72,10 @@ describe("email linking flow", () => {
     delete process.env.PRIVY_APP_SECRET;
     process.env.X402_SKIP_LINKING = "1";
 
-    const linkApi = await import("../../../src/wallet/link-api.js");
     const { createWallet } = await import("../../../src/wallet/factory.js");
     const wallet = await createWallet();
 
     expect(wallet.mode).toBe("proxy");
-    expect(linkApi.createLinkSession).not.toHaveBeenCalled();
   });
 
   it("loads existing linked wallet from config", async () => {
@@ -133,37 +109,59 @@ describe("email linking flow", () => {
     expect(wallet.describe().linkedEmail).toBe("saved@example.com");
   });
 
-  it("falls back to anonymous proxy when linking times out", async () => {
+  it("falls back to anonymous proxy when no existing wallet in config", async () => {
     delete process.env.PRIVY_APP_ID;
     delete process.env.PRIVY_APP_SECRET;
-    delete process.env.X402_SKIP_LINKING;
-
-    const linkApi = await import("../../../src/wallet/link-api.js");
-    vi.mocked(linkApi.pollLinkStatus).mockResolvedValue({
-      status: "expired",
-    });
 
     const { createWallet } = await import("../../../src/wallet/factory.js");
     const wallet = await createWallet();
 
+    // No existing wallet → creates anonymous proxy
     expect(wallet.mode).toBe("proxy");
-    expect(linkApi.createLinkSession).toHaveBeenCalled();
   });
 
-  it("falls back to anonymous proxy when linking session creation fails", async () => {
+  it("falls back to anonymous proxy when linking session creation fails (no existing wallet)", async () => {
     delete process.env.PRIVY_APP_ID;
     delete process.env.PRIVY_APP_SECRET;
-    delete process.env.X402_SKIP_LINKING;
 
-    const linkApi = await import("../../../src/wallet/link-api.js");
-    vi.mocked(linkApi.createLinkSession).mockRejectedValueOnce(
-      new Error("Network error"),
+    const { createWallet } = await import("../../../src/wallet/factory.js");
+    const wallet = await createWallet();
+
+    // No existing wallet in config → falls back to proxy
+    expect(wallet.mode).toBe("proxy");
+  });
+
+  it("throws when existing linked wallet API fails (does not fall through to proxy)", async () => {
+    delete process.env.PRIVY_APP_ID;
+    delete process.env.PRIVY_APP_SECRET;
+    process.env.X402_SKIP_LINKING = "1";
+
+    writeFileSync(
+      join(tempDir, "config.json"),
+      JSON.stringify({
+        version: 1,
+        wallet: {
+          mode: "linked",
+          proxyWalletId: "linked-fail-123",
+          proxyWalletSecret: "linked-secret",
+          linkedEmail: "fail@example.com",
+        },
+        spending: { perCallMaxUsdc: "5.00", dailyCapUsdc: "50.00" },
+        endpointSources: [],
+        customEndpoints: [],
+        preferences: { preferEscrow: false, preferredNetwork: "evm" },
+        allowlist: { enabled: true, merchants: [] },
+      }),
+    );
+
+    const proxyApi = await import("../../../src/wallet/proxy-api.js");
+    vi.mocked(proxyApi.proxyGetWallet).mockRejectedValue(
+      new Error("Service down"),
     );
 
     const { createWallet } = await import("../../../src/wallet/factory.js");
-    const wallet = await createWallet();
-
-    expect(wallet.mode).toBe("proxy");
+    await expect(createWallet()).rejects.toThrow("Could not load linked wallet");
+    expect(proxyApi.proxyCreateWallet).not.toHaveBeenCalled();
   });
 
   it("ProxyWallet describe() includes linkedEmail in linked mode", async () => {

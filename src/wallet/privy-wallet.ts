@@ -67,4 +67,8 @@ export class PrivyWallet implements WalletProvider {
       recoverable: true,
     };
   }
+
+  getProxyCredentials(): null {
+    return null;
+  }
 }

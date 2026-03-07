@@ -80,7 +80,10 @@ export function callEndpointTool(wallet: WalletProvider) {
         content: [
           {
             type: "text" as const,
-            text: JSON.stringify(summary, null, 2),
+            text: JSON.stringify(summary, (_k, v) =>
+              typeof v === "bigint" ? v.toString() : v,
+              2,
+            ),
           },
         ],
         isError: !result.success,

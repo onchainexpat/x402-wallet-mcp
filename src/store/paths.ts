@@ -16,6 +16,10 @@ export function getConfigPath(): string {
   return join(getDataDir(), "config.json");
 }
 
+export function getConfigBackupPath(): string {
+  return join(getDataDir(), "config.json.bak");
+}
+
 export function getHistoryPath(): string {
   return join(getDataDir(), "history.jsonl");
 }
