@@ -27,10 +27,18 @@ export interface LinkStatusResponse {
   email?: string;
 }
 
-export async function createLinkSession(): Promise<LinkSessionResponse> {
+export async function createLinkSession(
+  existingWallet?: { walletId: string; walletSecret: string },
+): Promise<LinkSessionResponse> {
+  const body: Record<string, string> = {};
+  if (existingWallet) {
+    body.wallet_id = existingWallet.walletId;
+    body.wallet_secret = existingWallet.walletSecret;
+  }
   const res = await fetch(`${getBaseUrl()}/api/wallet/link/session`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     throw new Error(`createLinkSession failed: ${res.status} ${await res.text()}`);

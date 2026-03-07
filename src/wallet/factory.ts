@@ -12,10 +12,13 @@ const LOG_REMINDER_INTERVAL_MS = 30_000;
 
 /**
  * Attempt email linking: create a session, show the URL, and poll until complete or timeout.
+ * If existingWallet is provided, the email will be linked to that wallet (preserving address/funds).
  * Returns a linked ProxyWallet on success, or null on timeout/error.
  */
-async function attemptEmailLinking(): Promise<ProxyWallet | null> {
-  const session = await createLinkSession();
+async function attemptEmailLinking(
+  existingWallet?: { walletId: string; walletSecret: string },
+): Promise<ProxyWallet | null> {
+  const session = await createLinkSession(existingWallet);
 
   // Build full URL from relative link_url
   const baseUrl = process.env.X402_PROXY_URL
@@ -122,10 +125,13 @@ export async function createWallet(): Promise<WalletProvider> {
       );
       logger.info(`Proxy wallet loaded: ${wallet.address}`);
 
-      // Try email linking for existing proxy wallets too
+      // Try email linking for existing proxy wallets too (preserves existing address)
       if (!process.env.X402_SKIP_LINKING) {
         try {
-          const linked = await attemptEmailLinking();
+          const linked = await attemptEmailLinking({
+            walletId: config.wallet.proxyWalletId!,
+            walletSecret: config.wallet.proxyWalletSecret!,
+          });
           if (linked) return linked;
         } catch (err) {
           logger.warn(`Email linking failed: ${err}`);
