@@ -53,14 +53,25 @@ export async function proxySignTypedData(
   walletId: string,
   secret: string,
   typedData: unknown,
+  allowlistToken?: string,
 ): Promise<ProxySignResponse> {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${secret}`,
+    "Content-Type": "application/json",
+  };
+  if (allowlistToken) {
+    headers["X-Allowlist-Token"] = allowlistToken;
+  }
   const res = await fetch(`${getProxyUrl()}/${walletId}/sign`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${secret}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ typed_data: typedData }),
+    headers,
+    body: JSON.stringify({ typed_data: typedData }, (_k, v) =>
+      typeof v === "bigint"
+        ? v <= BigInt(Number.MAX_SAFE_INTEGER)
+          ? Number(v)
+          : `0x${v.toString(16)}`
+        : v,
+    ),
   });
   if (!res.ok) {
     throw new Error(`Proxy signTypedData failed: ${res.status} ${await res.text()}`);

@@ -1,6 +1,9 @@
 /**
  * REST client for wallet email-linking flow.
  * Talks to the same proxy service but uses the /link/ endpoints.
+ *
+ * Stateless: uses JWT session_token instead of session_id.
+ * verify returns wallet_secret directly — no polling needed.
  */
 
 const DEFAULT_BASE_URL = "https://x402.onchainexpat.com";
@@ -8,23 +11,36 @@ const DEFAULT_BASE_URL = "https://x402.onchainexpat.com";
 function getBaseUrl(): string {
   const proxyUrl = process.env.X402_PROXY_URL;
   if (proxyUrl) {
-    // Strip /api/wallet suffix to get the base URL
     return proxyUrl.replace(/\/api\/wallet\/?$/, "");
   }
   return DEFAULT_BASE_URL;
 }
 
 export interface LinkSessionResponse {
-  session_id: string;
+  session_token: string;
   link_url: string;
 }
 
-export interface LinkStatusResponse {
-  status: "pending" | "completed" | "expired";
-  wallet_id?: string;
-  address?: string;
-  wallet_secret?: string;
-  email?: string;
+export interface RecoveryResponse {
+  session_token: string;
+  email: string;
+  message: string;
+}
+
+export interface SendOtpResponse {
+  ok: boolean;
+  message: string;
+  session_token: string;
+}
+
+export interface VerifyOtpResponse {
+  ok: boolean;
+  wallet_id: string;
+  address: string;
+  email: string;
+  wallet_secret: string;
+  wallet_type?: string;
+  old_wallet_id?: string;
 }
 
 export async function createLinkSession(
@@ -46,12 +62,47 @@ export async function createLinkSession(
   return res.json() as Promise<LinkSessionResponse>;
 }
 
-export async function pollLinkStatus(sessionId: string): Promise<LinkStatusResponse> {
-  const res = await fetch(
-    `${getBaseUrl()}/api/wallet/link/status?session=${encodeURIComponent(sessionId)}`,
-  );
+export async function initiateRecovery(email: string): Promise<RecoveryResponse> {
+  const res = await fetch(`${getBaseUrl()}/api/wallet/link/recover`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
   if (!res.ok) {
-    throw new Error(`pollLinkStatus failed: ${res.status} ${await res.text()}`);
+    throw new Error(`initiateRecovery failed: ${res.status} ${await res.text()}`);
   }
-  return res.json() as Promise<LinkStatusResponse>;
+  return res.json() as Promise<RecoveryResponse>;
+}
+
+export async function sendOtp(
+  sessionToken: string,
+  email: string,
+): Promise<SendOtpResponse> {
+  const res = await fetch(`${getBaseUrl()}/api/wallet/link/send-otp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_token: sessionToken, email }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`sendOtp failed: ${res.status} ${text}`);
+  }
+  return res.json() as Promise<SendOtpResponse>;
+}
+
+export async function verifyOtp(
+  sessionToken: string,
+  email: string,
+  code: string,
+): Promise<VerifyOtpResponse> {
+  const res = await fetch(`${getBaseUrl()}/api/wallet/link/verify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_token: sessionToken, email, code }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`verifyOtp failed: ${res.status} ${text}`);
+  }
+  return res.json() as Promise<VerifyOtpResponse>;
 }

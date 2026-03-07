@@ -17,6 +17,8 @@ export class ProxyWallet implements WalletProvider {
   private walletSecret: string;
   private address: string;
   private email?: string;
+  private walletType?: "server" | "embedded";
+  private allowlistToken?: string;
 
   constructor(
     walletId: string,
@@ -24,36 +26,51 @@ export class ProxyWallet implements WalletProvider {
     address: string,
     mode: "proxy" | "linked" = "proxy",
     email?: string,
+    walletType?: "server" | "embedded",
+    allowlistToken?: string,
   ) {
     this.walletId = walletId;
     this.walletSecret = walletSecret;
     this.address = address;
     this.mode = mode;
     this.email = email;
+    this.walletType = walletType;
+    this.allowlistToken = allowlistToken;
   }
 
-  static async create(): Promise<ProxyWallet> {
+  /**
+   * Load an existing wallet from config. Throws if no wallet in config
+   * OR if the API call to verify it fails. Never creates a new wallet.
+   */
+  static async load(): Promise<ProxyWallet> {
     const config = loadConfig();
 
-    if (config.wallet.proxyWalletId && config.wallet.proxyWalletSecret) {
-      try {
-        const wallet = await proxyGetWallet(
-          config.wallet.proxyWalletId,
-          config.wallet.proxyWalletSecret,
-        );
-        logger.info(`Proxy wallet loaded: ${wallet.address}`);
-        return new ProxyWallet(
-          config.wallet.proxyWalletId,
-          config.wallet.proxyWalletSecret,
-          wallet.address,
-        );
-      } catch (err) {
-        logger.warn(
-          `Failed to load proxy wallet ${config.wallet.proxyWalletId}: ${err}. Creating new...`,
-        );
-      }
+    if (!config.wallet.proxyWalletId || !config.wallet.proxyWalletSecret) {
+      throw new Error("No proxy wallet found in config");
     }
 
+    const wallet = await proxyGetWallet(
+      config.wallet.proxyWalletId,
+      config.wallet.proxyWalletSecret,
+    );
+    logger.info(`Proxy wallet loaded: ${wallet.address}`);
+    return new ProxyWallet(
+      config.wallet.proxyWalletId,
+      config.wallet.proxyWalletSecret,
+      wallet.address,
+      config.wallet.mode === "linked" ? "linked" : "proxy",
+      config.wallet.linkedEmail || undefined,
+      config.wallet.walletType || undefined,
+      config.wallet.allowlistToken || undefined,
+    );
+  }
+
+  /**
+   * Explicitly create a brand-new wallet via the provisioning service.
+   * Only call when we're certain no existing wallet should be preserved.
+   */
+  static async createNew(): Promise<ProxyWallet> {
+    const config = loadConfig();
     const result = await proxyCreateWallet();
 
     updateConfig({
@@ -69,8 +86,29 @@ export class ProxyWallet implements WalletProvider {
     return new ProxyWallet(result.wallet_id, result.wallet_secret, result.address);
   }
 
+  /**
+   * Backward-compatible create: loads existing if config has wallet ID,
+   * otherwise creates new. If load fails, throws instead of silently
+   * creating a replacement.
+   */
+  static async create(): Promise<ProxyWallet> {
+    const config = loadConfig();
+
+    if (config.wallet.proxyWalletId && config.wallet.proxyWalletSecret) {
+      // Existing wallet — load or throw, never replace
+      return ProxyWallet.load();
+    }
+
+    // No existing wallet — safe to create new
+    return ProxyWallet.createNew();
+  }
+
   getEvmAddress(): string {
     return this.address;
+  }
+
+  getProxyCredentials(): { walletId: string; walletSecret: string } {
+    return { walletId: this.walletId, walletSecret: this.walletSecret };
   }
 
   async signTypedData(
@@ -84,6 +122,7 @@ export class ProxyWallet implements WalletProvider {
       this.walletId,
       this.walletSecret,
       typedData,
+      this.allowlistToken,
     );
     return result.signature as `0x${string}`;
   }
@@ -94,6 +133,7 @@ export class ProxyWallet implements WalletProvider {
       evmAddress: this.address,
       recoverable: true,
       ...(this.email ? { linkedEmail: this.email } : {}),
+      ...(this.walletType ? { walletType: this.walletType } : {}),
     };
   }
 }

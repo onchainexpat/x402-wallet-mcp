@@ -2,80 +2,30 @@ import type { WalletProvider } from "./types.js";
 import { PrivyWallet } from "./privy-wallet.js";
 import { ProxyWallet } from "./proxy-wallet.js";
 import { proxyGetWallet } from "./proxy-api.js";
-import { createLinkSession, pollLinkStatus } from "./link-api.js";
-import { loadConfig, updateConfig } from "../store/config.js";
+import { loadConfig } from "../store/config.js";
 import { logger } from "../utils/logger.js";
 
-const POLL_INTERVAL_MS = 2000;
-const POLL_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
-const LOG_REMINDER_INTERVAL_MS = 30_000;
+const RETRY_ATTEMPTS = 2;
+const RETRY_DELAY_MS = 3000;
 
-/**
- * Attempt email linking: create a session, show the URL, and poll until complete or timeout.
- * If existingWallet is provided, the email will be linked to that wallet (preserving address/funds).
- * Returns a linked ProxyWallet on success, or null on timeout/error.
- */
-async function attemptEmailLinking(
-  existingWallet?: { walletId: string; walletSecret: string },
-): Promise<ProxyWallet | null> {
-  const session = await createLinkSession(existingWallet);
-
-  // Build full URL from relative link_url
-  const baseUrl = process.env.X402_PROXY_URL
-    ? process.env.X402_PROXY_URL.replace(/\/api\/wallet\/?$/, "")
-    : "https://x402.onchainexpat.com";
-  const fullUrl = session.link_url.startsWith("http")
-    ? session.link_url
-    : `${baseUrl}${session.link_url}`;
-
-  logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  logger.info("Link your wallet to your email for easy recovery:");
-  logger.info(fullUrl);
-  logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-
-  const start = Date.now();
-  let lastReminder = start;
-
-  while (Date.now() - start < POLL_TIMEOUT_MS) {
-    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-
-    const status = await pollLinkStatus(session.session_id);
-
-    if (status.status === "completed" && status.wallet_id && status.address && status.wallet_secret) {
-      const config = loadConfig();
-      updateConfig({
-        ...config,
-        wallet: {
-          mode: "linked",
-          proxyWalletId: status.wallet_id,
-          proxyWalletSecret: status.wallet_secret,
-          linkedEmail: status.email || null,
-        },
-      });
-
-      logger.info(`Wallet linked to ${status.email || "email"}: ${status.address}`);
-      return new ProxyWallet(
-        status.wallet_id,
-        status.wallet_secret,
-        status.address,
-        "linked",
-        status.email,
-      );
-    }
-
-    if (status.status === "expired") {
-      logger.warn("Link session expired");
-      return null;
-    }
-
-    if (Date.now() - lastReminder >= LOG_REMINDER_INTERVAL_MS) {
-      logger.info("Still waiting for email verification...");
-      lastReminder = Date.now();
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  attempts: number = RETRY_ATTEMPTS,
+  delayMs: number = RETRY_DELAY_MS,
+): Promise<T> {
+  let lastError: unknown;
+  for (let i = 0; i <= attempts; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      if (i < attempts) {
+        logger.warn(`Attempt ${i + 1} failed: ${err instanceof Error ? err.message : err}. Retrying in ${delayMs / 1000}s...`);
+        await new Promise((r) => setTimeout(r, delayMs));
+      }
     }
   }
-
-  logger.warn("Email linking timed out after 5 minutes");
-  return null;
+  throw lastError;
 }
 
 /**
@@ -84,8 +34,10 @@ async function attemptEmailLinking(
  * 1. Privy direct (if env vars set)
  * 2. Existing linked wallet (config.mode="linked")
  * 3. Existing proxy wallet (config.mode="proxy")
- * 4. Attempt email linking (unless X402_SKIP_LINKING is set)
- * 5. Fallback: anonymous proxy wallet
+ * 4. Fallback: anonymous proxy wallet
+ *
+ * Email linking/recovery is handled interactively via the wallet_link
+ * and wallet_recover MCP tools (no background polling).
  */
 export async function createWallet(): Promise<WalletProvider> {
   // 1. Privy direct
@@ -99,9 +51,11 @@ export async function createWallet(): Promise<WalletProvider> {
   // 2. Existing linked wallet
   if (config.wallet.mode === "linked" && config.wallet.proxyWalletId && config.wallet.proxyWalletSecret) {
     try {
-      const wallet = await proxyGetWallet(
-        config.wallet.proxyWalletId,
-        config.wallet.proxyWalletSecret,
+      const wallet = await withRetry(() =>
+        proxyGetWallet(
+          config.wallet.proxyWalletId!,
+          config.wallet.proxyWalletSecret!,
+        ),
       );
       logger.info(`Wallet mode: Linked (${config.wallet.linkedEmail || "email"})`);
       return new ProxyWallet(
@@ -110,55 +64,58 @@ export async function createWallet(): Promise<WalletProvider> {
         wallet.address,
         "linked",
         config.wallet.linkedEmail || undefined,
+        config.wallet.walletType || undefined,
+        config.wallet.allowlistToken || undefined,
       );
     } catch (err) {
-      logger.warn(`Failed to load linked wallet: ${err}. Falling back...`);
+      const lastMsg = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        `Could not load linked wallet (${config.wallet.proxyWalletId}).\n` +
+        `  Last error: ${lastMsg}\n` +
+        `  Your wallet is safe — it has NOT been replaced.\n` +
+        `  To fix:\n` +
+        `  - If the service is down, try again later\n` +
+        `  - Use the wallet_recover tool with your linked email to recover\n` +
+        `  - If config is corrupted, restore from ~/.x402-wallet/config.json.bak`,
+      );
     }
   }
 
   // 3. Existing proxy wallet
-  if (config.wallet.mode === "proxy" && config.wallet.proxyWalletId && config.wallet.proxyWalletSecret) {
+  if (config.wallet.proxyWalletId && config.wallet.proxyWalletSecret) {
     try {
-      const wallet = await proxyGetWallet(
-        config.wallet.proxyWalletId,
-        config.wallet.proxyWalletSecret,
+      const wallet = await withRetry(() =>
+        proxyGetWallet(
+          config.wallet.proxyWalletId!,
+          config.wallet.proxyWalletSecret!,
+        ),
       );
       logger.info(`Proxy wallet loaded: ${wallet.address}`);
-
-      // Try email linking for existing proxy wallets too (preserves existing address)
-      if (!process.env.X402_SKIP_LINKING) {
-        try {
-          const linked = await attemptEmailLinking({
-            walletId: config.wallet.proxyWalletId!,
-            walletSecret: config.wallet.proxyWalletSecret!,
-          });
-          if (linked) return linked;
-        } catch (err) {
-          logger.warn(`Email linking failed: ${err}`);
-        }
-      }
-
       return new ProxyWallet(
         config.wallet.proxyWalletId,
         config.wallet.proxyWalletSecret,
         wallet.address,
+        "proxy",
+        undefined,
+        undefined,
+        config.wallet.allowlistToken || undefined,
       );
     } catch (err) {
-      logger.warn(`Failed to load proxy wallet: ${err}. Creating new...`);
+      const lastMsg = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        `Could not load proxy wallet (${config.wallet.proxyWalletId}).\n` +
+        `  Last error: ${lastMsg}\n` +
+        `  Your wallet is safe — it has NOT been replaced.\n` +
+        `  To fix:\n` +
+        `  - If the service is down, try again later\n` +
+        `  - Use the wallet_link tool to link your email for recovery\n` +
+        `  - If config is corrupted, restore from ~/.x402-wallet/config.json.bak`,
+      );
     }
   }
 
-  // 4. Attempt email linking for new wallets
-  if (!process.env.X402_SKIP_LINKING) {
-    try {
-      const linked = await attemptEmailLinking();
-      if (linked) return linked;
-    } catch (err) {
-      logger.warn(`Email linking failed: ${err}`);
-    }
-  }
-
-  // 5. Fallback: anonymous proxy wallet
+  // 4. Fallback: anonymous proxy wallet
   logger.info("Wallet mode: Proxy (zero-config via x402 provisioning service)");
-  return ProxyWallet.create();
+  logger.info("Tip: Use the wallet_link tool to link your email for easy recovery.");
+  return ProxyWallet.createNew();
 }

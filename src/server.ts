@@ -12,6 +12,8 @@ import { addEndpointSourceTool } from "./tools/add-endpoint-source.js";
 import { manageAllowlistTool } from "./tools/manage-allowlist.js";
 import { fundWalletTool } from "./tools/fund-wallet.js";
 import { walletLinkTool } from "./tools/wallet-link.js";
+import { walletRecoverTool } from "./tools/wallet-recover.js";
+import { exportKeyTool } from "./tools/export-key.js";
 
 export function createServer(wallet: WalletProvider): McpServer {
   const server = new McpServer({
@@ -182,8 +184,52 @@ export function createServer(wallet: WalletProvider): McpServer {
   server.tool(
     walletLink.name,
     walletLink.description,
+    {
+      email: z
+        .string()
+        .optional()
+        .describe("Email address to link (Step 1: sends verification code)"),
+      session_token: z
+        .string()
+        .optional()
+        .describe("Session token from Step 1 (Step 2: verify code)"),
+      code: z
+        .string()
+        .optional()
+        .describe("6-digit verification code from email (Step 2)"),
+    },
+    async (params) => walletLink.handler(params),
+  );
+
+  const exportKey = exportKeyTool(wallet);
+  server.tool(
+    exportKey.name,
+    exportKey.description,
     {},
-    async () => walletLink.handler(),
+    async () => exportKey.handler(),
+  );
+
+  const walletRecover = walletRecoverTool();
+  server.tool(
+    walletRecover.name,
+    walletRecover.description,
+    {
+      email: z
+        .string()
+        .optional()
+        .describe(
+          "Email previously linked to your wallet (Step 1: sends verification code)",
+        ),
+      session_token: z
+        .string()
+        .optional()
+        .describe("Session token from Step 1 (Step 2: verify code)"),
+      code: z
+        .string()
+        .optional()
+        .describe("6-digit verification code from email (Step 2)"),
+    },
+    async (params) => walletRecover.handler(params),
   );
 
   return server;
