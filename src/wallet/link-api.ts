@@ -33,6 +33,11 @@ export interface SendOtpResponse {
   session_token: string;
 }
 
+export interface WalletChoice {
+  wallet_id: string;
+  address: string;
+}
+
 export interface VerifyOtpResponse {
   ok: boolean;
   wallet_id: string;
@@ -41,6 +46,11 @@ export interface VerifyOtpResponse {
   wallet_secret: string;
   wallet_type?: string;
   old_wallet_id?: string;
+  // Multi-wallet selection
+  status?: "choose_wallet";
+  wallets?: WalletChoice[];
+  session_token?: string;
+  message?: string;
 }
 
 export async function createLinkSession(
@@ -94,11 +104,20 @@ export async function verifyOtp(
   sessionToken: string,
   email: string,
   code: string,
+  walletId?: string,
 ): Promise<VerifyOtpResponse> {
+  const body: Record<string, string> = {
+    session_token: sessionToken,
+    email,
+    code,
+  };
+  if (walletId) {
+    body.wallet_id = walletId;
+  }
   const res = await fetch(`${getBaseUrl()}/api/wallet/link/verify`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ session_token: sessionToken, email, code }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     const text = await res.text();

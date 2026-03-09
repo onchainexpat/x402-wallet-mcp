@@ -76,16 +76,15 @@ describe("wallet factory", () => {
     expect(wallet.getEvmAddress()).toMatch(/^0x[0-9a-fA-F]{40}$/);
   });
 
-  it("creates a Proxy wallet when PRIVY env vars are missing, no existing wallet, and linking is skipped", async () => {
+  it("returns setup_required when no existing wallet (requires email linking)", async () => {
     delete process.env.PRIVY_APP_ID;
     delete process.env.PRIVY_APP_SECRET;
-    process.env.X402_SKIP_LINKING = "1";
 
     const { createWallet } = await import("../../../src/wallet/factory.js");
     const wallet = await createWallet();
 
-    expect(wallet.mode).toBe("proxy");
-    expect(wallet.getEvmAddress()).toMatch(/^0x[0-9a-fA-F]{40}$/);
+    expect(wallet.mode).toBe("setup_required");
+    expect(wallet.describe().setupRequired).toBe(true);
   });
 
   it("prefers Privy over Proxy when both could work", async () => {
@@ -99,7 +98,7 @@ describe("wallet factory", () => {
     expect(wallet.mode).toBe("privy");
   });
 
-  it("falls back to proxy when email linking expires (no existing wallet)", async () => {
+  it("returns setup_required when no wallet and no Privy env vars", async () => {
     delete process.env.PRIVY_APP_ID;
     delete process.env.PRIVY_APP_SECRET;
     delete process.env.X402_SKIP_LINKING;
@@ -107,8 +106,8 @@ describe("wallet factory", () => {
     const { createWallet } = await import("../../../src/wallet/factory.js");
     const wallet = await createWallet();
 
-    // Link session mock returns expired, no existing wallet → falls back to proxy
-    expect(wallet.mode).toBe("proxy");
+    // No existing wallet → requires email linking via wallet_link tool
+    expect(wallet.mode).toBe("setup_required");
   });
 
   it("existing linked wallet + API failure → throws (not falls through)", async () => {

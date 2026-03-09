@@ -15,6 +15,41 @@ import { walletLinkTool } from "./tools/wallet-link.js";
 import { walletRecoverTool } from "./tools/wallet-recover.js";
 import { exportKeyTool } from "./tools/export-key.js";
 
+type ToolResult = {
+  [x: string]: unknown;
+  content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }>;
+  isError?: boolean;
+};
+
+const SETUP_RESPONSE: ToolResult = {
+  content: [
+    {
+      type: "text" as const,
+      text: JSON.stringify(
+        {
+          error: "wallet_not_configured",
+          message:
+            "No wallet configured yet. Use the wallet_link tool to create a wallet linked to your email.",
+        },
+        null,
+        2,
+      ),
+    },
+  ],
+  isError: true,
+};
+
+/** Wrap a handler so it blocks when no wallet is set up. */
+function guardWallet<P>(
+  wallet: WalletProvider,
+  handler: (params: P) => Promise<ToolResult>,
+): (params: P) => Promise<ToolResult> {
+  return async (params: P) => {
+    if (wallet.mode === "setup_required") return SETUP_RESPONSE;
+    return handler(params);
+  };
+}
+
 export function createServer(wallet: WalletProvider): McpServer {
   const server = new McpServer({
     name: "x402-wallet",
@@ -27,7 +62,7 @@ export function createServer(wallet: WalletProvider): McpServer {
     walletInfo.name,
     walletInfo.description,
     {},
-    async () => walletInfo.handler(),
+    guardWallet(wallet, () => walletInfo.handler()),
   );
 
   const checkBalance = checkBalanceTool(wallet);
@@ -35,7 +70,7 @@ export function createServer(wallet: WalletProvider): McpServer {
     checkBalance.name,
     checkBalance.description,
     {},
-    async () => checkBalance.handler(),
+    guardWallet(wallet, () => checkBalance.handler()),
   );
 
   const callEndpoint = callEndpointTool(wallet);
@@ -61,7 +96,7 @@ export function createServer(wallet: WalletProvider): McpServer {
         .optional()
         .describe("Prefer escrow payment if available (default: false)"),
     },
-    async (params) => callEndpoint.handler(params),
+    guardWallet(wallet, (params) => callEndpoint.handler(params)),
   );
 
   const queryEp = queryEndpointTool();
@@ -177,7 +212,7 @@ export function createServer(wallet: WalletProvider): McpServer {
         .optional()
         .describe("USD amount to pre-fill (default: 25)"),
     },
-    async (params) => fundWallet.handler(params),
+    guardWallet(wallet, (params) => fundWallet.handler(params)),
   );
 
   const walletLink = walletLinkTool(wallet);
@@ -206,7 +241,7 @@ export function createServer(wallet: WalletProvider): McpServer {
     exportKey.name,
     exportKey.description,
     {},
-    async () => exportKey.handler(),
+    guardWallet(wallet, () => exportKey.handler()),
   );
 
   const walletRecover = walletRecoverTool();
@@ -228,6 +263,10 @@ export function createServer(wallet: WalletProvider): McpServer {
         .string()
         .optional()
         .describe("6-digit verification code from email (Step 2)"),
+      wallet_id: z
+        .string()
+        .optional()
+        .describe("Wallet ID to select (Step 3: when multiple wallets exist)"),
     },
     async (params) => walletRecover.handler(params),
   );

@@ -16,14 +16,18 @@ export async function main(): Promise<void> {
   const wallet = await createWallet();
   const info = wallet.describe();
 
-  logger.info(`Wallet ready: ${info.mode} mode`);
-  logger.info(`EVM address: ${info.evmAddress}`);
-  if (info.mode === "linked") {
-    logger.info(`Wallet linked to ${info.linkedEmail || "email"} — recoverable via email verification`);
-  } else if (info.mode === "proxy") {
-    logger.info("Using hosted proxy — set PRIVY_APP_ID and PRIVY_APP_SECRET for direct Privy access");
+  if (info.setupRequired) {
+    logger.info("No wallet configured — use the wallet_link tool to create one linked to your email.");
+  } else {
+    logger.info(`Wallet ready: ${info.mode} mode`);
+    logger.info(`EVM address: ${info.evmAddress}`);
+    if (info.mode === "linked") {
+      logger.info(`Wallet linked to ${info.linkedEmail || "email"} — recoverable via email verification`);
+    } else if (info.mode === "proxy") {
+      logger.info("Using hosted proxy — set PRIVY_APP_ID and PRIVY_APP_SECRET for direct Privy access");
+    }
+    logger.info(`Send USDC on Base to ${info.evmAddress} to fund your wallet`);
   }
-  logger.info(`Send USDC on Base to ${info.evmAddress} to fund your wallet`);
 
   // Create and start MCP server
   const server = createServer(wallet);

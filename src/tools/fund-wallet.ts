@@ -5,17 +5,53 @@ import {
   generateDepositQrText,
   saveDepositQrFile,
 } from "../utils/deposit-qr.js";
+import { logger } from "../utils/logger.js";
 
 type TextContent = { type: "text"; text: string };
 type ImageContent = { type: "image"; data: string; mimeType: string };
 type Content = TextContent | ImageContent;
+
+const DEFAULT_PROXY_BASE = "https://x402.onchainexpat.com";
+
+function getProxyBase(): string {
+  const proxyUrl = process.env.X402_PROXY_URL;
+  if (proxyUrl) {
+    return proxyUrl.replace(/\/api\/wallet\/?$/, "");
+  }
+  return DEFAULT_PROXY_BASE;
+}
+
+/**
+ * Try server-side onramp URL generation (no local CDP keys needed).
+ */
+async function fetchServerOnrampUrl(
+  address: string,
+  amount: number,
+): Promise<string | null> {
+  try {
+    const res = await fetch(`${getProxyBase()}/api/wallet/link/onramp`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address, amount }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { url?: string };
+    return data.url || null;
+  } catch (err) {
+    logger.debug(
+      `Server onramp failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
+  }
+}
 
 export function fundWalletTool(wallet: WalletProvider) {
   return {
     name: "fund_wallet",
     description:
       "Get a link to buy USDC with a debit card or Apple Pay via Coinbase Onramp. " +
-      "No crypto experience needed. Falls back to deposit address + QR code if Coinbase Onramp is not configured.",
+      "No crypto experience needed. Falls back to deposit address + QR code if unavailable.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -31,8 +67,11 @@ export function fundWalletTool(wallet: WalletProvider) {
 
       const content: Content[] = [];
 
-      // Try Coinbase Onramp first
-      const onrampUrl = await generateOnrampUrl(address, amount);
+      // Try local CDP keys first, then server-side fallback
+      let onrampUrl = await generateOnrampUrl(address, amount);
+      if (!onrampUrl) {
+        onrampUrl = await fetchServerOnrampUrl(address, amount);
+      }
 
       if (onrampUrl) {
         content.push({
@@ -71,7 +110,6 @@ export function fundWalletTool(wallet: WalletProvider) {
                 network: "Base (eip155:8453)",
                 asset: "USDC",
                 instructions: `Send USDC on Base to: ${address}`,
-                note: "Coinbase Onramp (buy with debit card) is not configured. Set CDP_API_KEY_ID and CDP_API_KEY_SECRET env vars to enable it.",
                 depositQrFile: qrFilePath,
               },
               null,

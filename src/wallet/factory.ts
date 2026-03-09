@@ -1,6 +1,7 @@
 import type { WalletProvider } from "./types.js";
 import { PrivyWallet } from "./privy-wallet.js";
 import { ProxyWallet } from "./proxy-wallet.js";
+import { NullWallet } from "./null-wallet.js";
 import { proxyGetWallet } from "./proxy-api.js";
 import { loadConfig } from "../store/config.js";
 import { logger } from "../utils/logger.js";
@@ -114,8 +115,7 @@ export async function createWallet(): Promise<WalletProvider> {
     }
   }
 
-  // 4. Fallback: anonymous proxy wallet
-  logger.info("Wallet mode: Proxy (zero-config via x402 provisioning service)");
-  logger.info("Tip: Use the wallet_link tool to link your email for easy recovery.");
-  return ProxyWallet.createNew();
+  // 4. No wallet configured — require email linking
+  logger.info("No wallet configured. Use the wallet_link tool to create one linked to your email.");
+  return new NullWallet();
 }

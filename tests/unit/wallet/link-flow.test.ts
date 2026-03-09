@@ -55,19 +55,19 @@ describe("email linking flow", () => {
     process.env = { ...originalEnv };
   });
 
-  it("new wallet falls back to anonymous proxy (no auto-linking)", async () => {
+  it("new wallet returns setup_required (no auto-provisioning)", async () => {
     delete process.env.PRIVY_APP_ID;
     delete process.env.PRIVY_APP_SECRET;
 
     const { createWallet } = await import("../../../src/wallet/factory.js");
     const wallet = await createWallet();
 
-    // Factory no longer does auto-linking — falls back to anonymous proxy
-    expect(wallet.mode).toBe("proxy");
-    expect(wallet.getEvmAddress()).toBe("0x2222222222222222222222222222222222222222");
+    // Factory requires email linking — no anonymous wallets
+    expect(wallet.mode).toBe("setup_required");
+    expect(wallet.describe().setupRequired).toBe(true);
   });
 
-  it("skips linking when X402_SKIP_LINKING is set and falls back to proxy", async () => {
+  it("returns setup_required when X402_SKIP_LINKING is set (no auto-provisioning)", async () => {
     delete process.env.PRIVY_APP_ID;
     delete process.env.PRIVY_APP_SECRET;
     process.env.X402_SKIP_LINKING = "1";
@@ -75,7 +75,7 @@ describe("email linking flow", () => {
     const { createWallet } = await import("../../../src/wallet/factory.js");
     const wallet = await createWallet();
 
-    expect(wallet.mode).toBe("proxy");
+    expect(wallet.mode).toBe("setup_required");
   });
 
   it("loads existing linked wallet from config", async () => {
@@ -109,26 +109,26 @@ describe("email linking flow", () => {
     expect(wallet.describe().linkedEmail).toBe("saved@example.com");
   });
 
-  it("falls back to anonymous proxy when no existing wallet in config", async () => {
+  it("returns setup_required when no existing wallet in config", async () => {
     delete process.env.PRIVY_APP_ID;
     delete process.env.PRIVY_APP_SECRET;
 
     const { createWallet } = await import("../../../src/wallet/factory.js");
     const wallet = await createWallet();
 
-    // No existing wallet → creates anonymous proxy
-    expect(wallet.mode).toBe("proxy");
+    // No existing wallet → requires email linking
+    expect(wallet.mode).toBe("setup_required");
   });
 
-  it("falls back to anonymous proxy when linking session creation fails (no existing wallet)", async () => {
+  it("returns setup_required when no existing wallet (even without link session)", async () => {
     delete process.env.PRIVY_APP_ID;
     delete process.env.PRIVY_APP_SECRET;
 
     const { createWallet } = await import("../../../src/wallet/factory.js");
     const wallet = await createWallet();
 
-    // No existing wallet in config → falls back to proxy
-    expect(wallet.mode).toBe("proxy");
+    // No existing wallet in config → requires email linking
+    expect(wallet.mode).toBe("setup_required");
   });
 
   it("throws when existing linked wallet API fails (does not fall through to proxy)", async () => {

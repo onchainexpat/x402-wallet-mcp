@@ -32,13 +32,15 @@ This project is the missing piece: an open-source MCP server that gives any AI a
 
 - **Zero-config wallets** — works out of the box with no API keys or signup required
 - **[Privy](https://www.privy.io/) HSM-backed keys** — keys never leave Privy's HSM/TEE infrastructure
-- **Two wallet modes** — Proxy (zero-config default) or Privy direct (bring your own credentials)
+- **Three wallet modes** — Proxy (zero-config default), Linked (email-recoverable), or Privy direct (BYOK)
+- **Email recovery** — link your wallet to an email, recover it on any device via OTP
 - **Full x402 negotiation** — handles 402 → sign → retry automatically
 - **EVM exact + escrow** — EIP-3009 TransferWithAuthorization and ReceiveWithAuthorization
 - **Endpoint discovery** — fetches `.well-known/x402` documents and searches [x402scan.com](https://x402scan.com)
 - **Spending controls** — per-call maximum and daily cap with automatic enforcement
 - **Transaction history** — append-only log of every payment
-- **10 MCP tools** — everything an agent needs to discover, query, pay, and audit
+- **Coinbase Onramp** — buy USDC with a debit card or Apple Pay, no crypto experience needed
+- **13 MCP tools** — everything an agent needs to discover, query, pay, and audit
 
 ## Quick Start
 
@@ -65,9 +67,27 @@ Add to your MCP config file (`.mcp.json`, `~/.cursor/mcp.json`, or Claude Deskto
 }
 ```
 
-On first run an HSM-backed wallet is automatically provisioned via the [x402 provisioning service](https://x402.onchainexpat.com). Send USDC on Base to the address it prints (in MCP client logs) and start making paid API calls.
+On first run an HSM-backed wallet is automatically provisioned via the [x402 provisioning service](https://x402.onchainexpat.com). Fund your wallet using the `fund_wallet` tool (generates a Coinbase Onramp link) or send USDC on Base directly to the wallet address.
 
-The wallet ID and secret are saved to `~/.x402-wallet/config.json` for reuse across sessions.
+### Link Your Wallet to Email (Recommended)
+
+After setup, use `wallet_link` to connect your wallet to an email address. This enables recovery on any device:
+
+```
+You: "Link my wallet to my@email.com"
+Claude: Verification code sent! Enter the 6-digit code from your email.
+You: "123456"
+Claude: ✓ Wallet linked to my@email.com. You can recover this wallet on any device.
+```
+
+### Recover on Another Device
+
+```
+You: "Recover my wallet using my@email.com"
+Claude: ✓ Wallet recovered — same address, same balance.
+```
+
+If you have multiple wallets linked to the same email, you'll be shown each wallet's address and USDC balance so you can choose which one to load.
 
 ### Power Users: Bring Your Own Privy Credentials
 
@@ -112,7 +132,7 @@ With your own Privy credentials, you can recover your wallet directly at [home.p
 
 ## MCP Tools
 
-The server exposes 10 tools that any MCP client can call:
+The server exposes 13 tools that any MCP client can call:
 
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|
@@ -121,11 +141,14 @@ The server exposes 10 tools that any MCP client can call:
 | `discover_endpoints` | Search for available x402 APIs | `query?`, `source?` |
 | `check_balance` | USDC balance on Base + deposit address | — |
 | `wallet_info` | Wallet mode, addresses, recovery status | — |
+| `fund_wallet` | Buy USDC via Coinbase Onramp (debit card / Apple Pay) | `amount?` |
 | `transaction_history` | Recent payment log | `limit?` |
 | `configure_spending` | Set per-call max and daily cap | `per_call_max?`, `daily_cap?` |
-| `add_endpoint_source` | Register a `.well-known/x402` source | `base_url` |
+| `add_endpoint_source` | Register a `.well-known/x402` source | `base_url?`, `endpoint_url?` |
 | `manage_allowlist` | Add/remove merchant allowlist entries | `allow?`, `remove?`, `mode?` |
-| `fund_wallet` | Get Coinbase onramp link to buy USDC | `amount?` |
+| `wallet_link` | Link wallet to email for recovery | `email?`, `session_token?`, `code?` |
+| `wallet_recover` | Recover a linked wallet on any device | `email?`, `session_token?`, `code?`, `wallet_id?` |
+| `export_key` | Instructions for exporting private key via Privy | — |
 
 ### Example: Paid API Call
 
@@ -145,7 +168,7 @@ The tool returns:
 {
   "success": true,
   "status": 200,
-  "amountPaid": "0.002000",
+  "amountPaid": "$0.01",
   "scheme": "exact",
   "network": "eip155:8453",
   "data": {
@@ -201,8 +224,9 @@ The tool auto-detects which scheme to use based on the server's `accepts` array.
 | `X402_PER_CALL_MAX` | Max USDC per API call (e.g. `"10.00"`) | No |
 | `X402_DAILY_CAP` | Max USDC per day (e.g. `"100.00"`) | No |
 | `X402_RPC_URL` | Custom Base RPC endpoint | No |
-| `CDP_API_KEY_ID` | Coinbase onramp API key | No |
-| `CDP_API_KEY_SECRET` | Coinbase onramp API secret | No |
+| `X402_SKIP_LINKING` | Skip email link prompt on first run | No |
+
+**No environment variables are required.** The wallet works zero-config out of the box, including Coinbase Onramp for buying USDC.
 
 **Wallet mode priority:** If `PRIVY_APP_ID` and `PRIVY_APP_SECRET` are set, the wallet connects directly to Privy. Otherwise, it uses the hosted proxy for zero-config operation.
 
@@ -230,7 +254,7 @@ All persistent data is stored in `~/.x402-wallet/`:
 }
 ```
 
-> **Note:** The default mode is `"proxy"` (zero-config). When `PRIVY_APP_ID` and `PRIVY_APP_SECRET` env vars are set, the wallet automatically switches to `"privy"` mode with `privyWalletId` instead.
+> **Note:** The default mode is `"proxy"` (zero-config). Use `wallet_link` to upgrade to `"linked"` mode with email recovery. When `PRIVY_APP_ID` and `PRIVY_APP_SECRET` env vars are set, the wallet automatically switches to `"privy"` mode.
 
 ## Architecture
 
@@ -240,14 +264,16 @@ x402-wallet-mcp/
 │   └── x402-wallet-mcp.ts          # CLI entry point
 ├── src/
 │   ├── index.ts                     # Main: wallet + MCP server + stdio
-│   ├── server.ts                    # McpServer with 10 tools
+│   ├── server.ts                    # McpServer with 13 tools
 │   ├── wallet/
 │   │   ├── types.ts                 # WalletProvider interface
+│   │   ├── factory.ts               # Wallet creation (proxy/linked/privy)
 │   │   ├── proxy-wallet.ts          # Zero-config wallet via hosted proxy
 │   │   ├── proxy-api.ts             # REST client for proxy service
 │   │   ├── privy-wallet.ts          # Direct Privy server wallets (HSM/TEE)
 │   │   ├── privy-api.ts             # REST client for Privy API
-│   │   └── factory.ts               # Wallet creation (proxy or privy)
+│   │   ├── link-api.ts              # Email linking & recovery API client
+│   │   └── null-wallet.ts           # Placeholder for unconfigured state
 │   ├── payment/
 │   │   ├── evm-exact.ts             # EIP-3009 TransferWithAuthorization
 │   │   ├── evm-escrow.ts            # ReceiveWithAuthorization + nonce
@@ -260,8 +286,9 @@ x402-wallet-mcp/
 │   │   └── registry.ts              # Merge + deduplicate + cache
 │   ├── spending/
 │   │   ├── tracker.ts               # Per-call + daily cap enforcement
+│   │   ├── allowlist.ts             # Merchant allowlist validation
 │   │   └── store.ts                 # Persist daily spend totals
-│   ├── tools/                       # 10 MCP tool implementations
+│   ├── tools/                       # 13 MCP tool implementations
 │   ├── store/
 │   │   ├── config.ts                # ~/.x402-wallet/config.json
 │   │   ├── history.ts               # Append-only JSONL transaction log
@@ -269,9 +296,11 @@ x402-wallet-mcp/
 │   └── utils/
 │       ├── logger.ts                # stderr-only (stdout = MCP JSON-RPC)
 │       ├── http.ts                  # Fetch with timeout + retries
-│       └── format.ts                # USDC atomic ↔ human-readable
+│       ├── format.ts                # USDC atomic ↔ human-readable
+│       ├── deposit-qr.ts            # QR code generation for deposits
+│       └── onramp.ts                # Coinbase Onramp URL generation
 └── tests/
-    ├── unit/                        # 105 tests across 14 files
+    ├── unit/                        # 127 tests across 16 files
     ├── integration/                 # Live endpoint tests (costs real USDC)
     └── e2e/                         # Full MCP server over stdio
 ```
@@ -307,7 +336,7 @@ npm run dev         # Run with tsx (auto-reloads)
 ### Testing
 
 ```bash
-# Unit tests (105 tests, no network calls, no USDC spent)
+# Unit tests (127 tests, no network calls, no USDC spent)
 npm test
 
 # Watch mode
@@ -317,16 +346,16 @@ npm run test:watch
 # Requires a funded wallet
 RUN_LIVE_TESTS=1 npm run test:live
 
-# E2E tests (spawns MCP server over stdio, calls all 10 tools)
+# E2E tests (spawns MCP server over stdio, calls all 13 tools)
 RUN_E2E_TESTS=1 npx vitest run tests/e2e
 ```
 
 The unit test suite covers:
-- **Wallet**: Proxy + Privy API mocking, factory routing (env var detection)
+- **Wallet**: Proxy + Privy + Linked API mocking, factory routing, email linking/recovery
 - **Payment**: EIP-3009 exact/escrow signing, escrow nonce determinism, full negotiator flow (402 → sign → retry), edge cases (double-402, empty accepts, spending limits)
-- **Spending**: per-call max, daily cap, midnight reset, env var overrides
+- **Spending**: per-call max, daily cap, midnight reset, env var overrides, merchant allowlist
 - **Discovery**: endpoint merging, deduplication, cache behavior, fetch failure handling
-- **Store**: config defaults/persistence, history append/query, USDC formatting
+- **Store**: config defaults/persistence, history append/query, USDC formatting, Coinbase onramp URLs
 
 ### Local Testing with an MCP Client
 
@@ -361,6 +390,7 @@ The server communicates over stdio (JSON-RPC), so you need an MCP client to inte
 - **Proxy signing validation**: The hosted proxy validates every signing request — only USDC transfers on Base, capped at 100 USDC per transaction.
 - **Spending limits**: Enforced locally before signing. Cannot be bypassed by the AI agent.
 - **No stdout leaks**: All logging goes to stderr. stdout is reserved for MCP JSON-RPC. Private keys never appear in logs.
+- **Email recovery**: OTP-verified, rate-limited, HMAC-derived codes with 10-minute expiry.
 
 ## Roadmap
 
@@ -376,7 +406,7 @@ Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines
 
 Before submitting a PR:
 
-1. Run `npm test` and ensure all 105 tests pass
+1. Run `npm test` and ensure all 127 tests pass
 2. Run `npm run lint` for type checking
 3. Add tests for new functionality
 4. Keep PRs focused — one feature or fix per PR
