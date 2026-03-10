@@ -6,7 +6,7 @@ import type { WalletProvider } from "../wallet/types.js";
 import type { AcceptEntry, PaymentRequired, PaymentResult } from "./types.js";
 import { signExactPayment } from "./evm-exact.js";
 import { signEscrowPayment } from "./evm-escrow.js";
-import { fetchWithRetry } from "../utils/http.js";
+import { fetchWithRetry, PAID_REQUEST_TIMEOUT } from "../utils/http.js";
 import { checkMerchantAllowlist } from "../spending/allowlist.js";
 import { getUsdcBalance } from "../utils/balance.js";
 import { formatUsdc } from "../utils/format.js";
@@ -262,6 +262,7 @@ export async function makePaymentCall(
     },
     body,
     retries: 0, // Don't retry after signing — authorization might be consumed
+    timeout: PAID_REQUEST_TIMEOUT, // 120s — server does real work after payment
   });
 
   const responseText = await paidResponse.text();

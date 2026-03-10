@@ -1,6 +1,8 @@
 import { logger } from "./logger.js";
 
 const DEFAULT_TIMEOUT = 30_000;
+/** Timeout for paid requests that do real server-side work after payment */
+export const PAID_REQUEST_TIMEOUT = 120_000;
 const MAX_RETRIES = 2;
 
 export interface FetchOptions {
