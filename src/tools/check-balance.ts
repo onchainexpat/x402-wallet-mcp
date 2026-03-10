@@ -1,8 +1,6 @@
-import { createPublicClient, http } from "viem";
-import { base } from "viem/chains";
 import type { WalletProvider } from "../wallet/types.js";
-import { ERC20_BALANCE_ABI, USDC_ADDRESSES, DEFAULT_RPC_URL } from "../payment/constants.js";
 import { formatUsdc } from "../utils/format.js";
+import { getUsdcBalance } from "../utils/balance.js";
 import {
   generateDepositQrBase64,
   generateDepositQrText,
@@ -24,22 +22,9 @@ export function checkBalanceTool(wallet: WalletProvider) {
     },
     handler: async () => {
       const address = wallet.getEvmAddress() as `0x${string}`;
-      const rpcUrl = process.env.X402_RPC_URL || DEFAULT_RPC_URL;
-
-      const client = createPublicClient({
-        chain: base,
-        transport: http(rpcUrl),
-      });
 
       try {
-        const balance = await client.readContract({
-          address: USDC_ADDRESSES[8453],
-          abi: ERC20_BALANCE_ABI,
-          functionName: "balanceOf",
-          args: [address],
-        });
-
-        const balanceBigInt = balance as bigint;
+        const balanceBigInt = await getUsdcBalance(address);
         const needsFunding = balanceBigInt === 0n;
 
         const content: Content[] = [

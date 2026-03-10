@@ -8,6 +8,8 @@ import { signExactPayment } from "./evm-exact.js";
 import { signEscrowPayment } from "./evm-escrow.js";
 import { fetchWithRetry } from "../utils/http.js";
 import { checkMerchantAllowlist } from "../spending/allowlist.js";
+import { getUsdcBalance } from "../utils/balance.js";
+import { formatUsdc } from "../utils/format.js";
 import { logger } from "../utils/logger.js";
 
 export interface NegotiatorOptions {
@@ -201,6 +203,34 @@ export async function makePaymentCall(
       network,
       scheme,
     };
+  }
+
+  // Step 4b: Pre-flight balance check
+  try {
+    const walletAddress = wallet.getEvmAddress() as `0x${string}`;
+    const balance = await getUsdcBalance(walletAddress);
+    if (balance < amountAtomic) {
+      const shortfall = amountAtomic - balance;
+      return {
+        success: false,
+        status: 402,
+        data: {
+          error: "insufficient_balance",
+          balance: formatUsdc(balance),
+          required: formatUsdc(amountAtomic),
+          shortfall: formatUsdc(shortfall),
+          walletAddress,
+          detail: `Wallet balance ${formatUsdc(balance)} is less than the required ${formatUsdc(amountAtomic)} (short by ${formatUsdc(shortfall)}). Send USDC on Base to ${walletAddress} to top up.`,
+        },
+        error: `Insufficient balance: have ${formatUsdc(balance)}, need ${formatUsdc(amountAtomic)} (short ${formatUsdc(shortfall)})`,
+        amountPaid: 0n,
+        network,
+        scheme,
+      };
+    }
+  } catch (err) {
+    // Balance check failed — proceed anyway, let the server catch it
+    logger.warn(`Pre-flight balance check failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   // Step 5: Sign payment
