@@ -1,6 +1,6 @@
 import { loadConfig } from "../store/config.js";
 import { loadSpending, addSpending } from "./store.js";
-import { usdcToAtomic, formatUsdc } from "../utils/format.js";
+import { usdcToAtomic, formatUsdc, atomicToUsdc } from "../utils/format.js";
 
 export interface SpendingCheck {
   allowed: boolean;
@@ -49,6 +49,8 @@ export function getSpendingSummary(): {
   todayCount: number;
   dailyCap: string;
   perCallMax: string;
+  autoApproveThreshold: string;
+  sessionAutoApproved: string;
 } {
   const config = loadConfig();
   const spending = loadSpending();
@@ -57,5 +59,37 @@ export function getSpendingSummary(): {
     todayCount: spending.callCount,
     dailyCap: config.spending.dailyCapUsdc,
     perCallMax: config.spending.perCallMaxUsdc,
+    autoApproveThreshold: config.spending.autoApproveThresholdUsdc,
+    sessionAutoApproved: atomicToUsdc(BigInt(sessionAutoApprovedAtomic)),
+  };
+}
+
+// --- Session-scoped auto-approve tracking (in-memory, resets on restart) ---
+
+let sessionAutoApprovedAtomic = 0n;
+
+/** Check if a payment amount is under the auto-approve threshold (including cumulative session total) */
+export function isUnderAutoApproveThreshold(amountAtomic: bigint): boolean {
+  const config = loadConfig();
+  const threshold = usdcToAtomic(config.spending.autoApproveThresholdUsdc);
+  return sessionAutoApprovedAtomic + amountAtomic <= threshold;
+}
+
+/** Record an auto-approved payment in the session tracker */
+export function recordAutoApproval(amountAtomic: bigint): void {
+  sessionAutoApprovedAtomic += amountAtomic;
+}
+
+/** Reset the session auto-approve tracker (called after explicit user confirmation) */
+export function resetAutoApproveTracker(): void {
+  sessionAutoApprovedAtomic = 0n;
+}
+
+/** Get auto-approve summary for display */
+export function getAutoApproveSummary(): { sessionAutoApproved: string; threshold: string } {
+  const config = loadConfig();
+  return {
+    sessionAutoApproved: formatUsdc(sessionAutoApprovedAtomic),
+    threshold: formatUsdc(usdcToAtomic(config.spending.autoApproveThresholdUsdc)),
   };
 }

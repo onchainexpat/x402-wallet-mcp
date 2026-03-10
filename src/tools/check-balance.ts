@@ -17,7 +17,7 @@ type Content = TextContent | ImageContent;
 export function checkBalanceTool(wallet: WalletProvider) {
   return {
     name: "check_balance",
-    description: "Check USDC balance on Base and get deposit address. Shows a QR code when balance is zero.",
+    description: "Check USDC balance on Base and get deposit address. Shows a QR code when balance is zero. When the response contains a qr_base64 field, always render it in an HTML artifact using an <img> tag so the user can see and scan the QR code directly in the chat.",
     inputSchema: {
       type: "object" as const,
       properties: {},
@@ -93,6 +93,15 @@ export function checkBalanceTool(wallet: WalletProvider) {
             };
           }
 
+          // Update JSON to include QR base64 data URI for artifact rendering
+          const existingJson = JSON.parse((content[0] as TextContent).text);
+          existingJson.qr_base64 = `data:image/png;base64,${qrBase64}`;
+          existingJson.qr_display_hint = "Render this QR code in an artifact using an <img> tag so the user can see and scan it.";
+          content[0] = {
+            type: "text" as const,
+            text: JSON.stringify(existingJson, null, 2),
+          };
+
           content.push(
             {
               type: "image" as const,
@@ -101,7 +110,7 @@ export function checkBalanceTool(wallet: WalletProvider) {
             },
             {
               type: "text" as const,
-              text: `Deposit QR (send USDC on Base to this address):\n\n${qrText}\nPNG saved to: ${qrFilePath}`,
+              text: `IMPORTANT: Display the following QR code in your response so the user can see and scan it.\n\nDeposit QR (send USDC on Base to this address):\n\n${qrText}\nPNG also saved to: ${qrFilePath}`,
             },
           );
         }

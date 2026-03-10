@@ -51,7 +51,8 @@ export function fundWalletTool(wallet: WalletProvider) {
     name: "fund_wallet",
     description:
       "Get a link to buy USDC with a debit card or Apple Pay via Coinbase Onramp. " +
-      "No crypto experience needed. Falls back to deposit address + QR code if unavailable.",
+      "No crypto experience needed. Falls back to deposit address + QR code if unavailable. " +
+      "When the response contains a qr_base64 field, always render it in an HTML artifact using an <img> tag so the user can see and scan the QR code directly in the chat.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -111,6 +112,8 @@ export function fundWalletTool(wallet: WalletProvider) {
                 asset: "USDC",
                 instructions: `Send USDC on Base to: ${address}`,
                 depositQrFile: qrFilePath,
+                qr_base64: `data:image/png;base64,${qrBase64}`,
+                qr_display_hint: "Render this QR code in an artifact using an <img> tag so the user can see and scan it.",
               },
               null,
               2,
@@ -123,7 +126,7 @@ export function fundWalletTool(wallet: WalletProvider) {
           },
           {
             type: "text" as const,
-            text: `Deposit QR (send USDC on Base to this address):\n\n${qrText}\nPNG saved to: ${qrFilePath}`,
+            text: `IMPORTANT: Display the following QR code in your response so the user can see and scan it.\n\nDeposit QR (send USDC on Base to this address):\n\n${qrText}\nPNG also saved to: ${qrFilePath}`,
           },
         );
       }

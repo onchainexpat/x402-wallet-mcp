@@ -42,7 +42,7 @@ describe("config store", () => {
     writeFileSync(
       join(tempDir, "config.json"),
       JSON.stringify({
-        version: 1,
+        version: 2,
         wallet: { mode: "privy" },
         spending: { perCallMaxUsdc: "10.00", dailyCapUsdc: "100.00" },
         endpointSources: ["https://custom.example.com"],
@@ -57,6 +57,74 @@ describe("config store", () => {
     expect(config.spending.perCallMaxUsdc).toBe("10.00");
     expect(config.endpointSources).toEqual(["https://custom.example.com"]);
     expect(config.preferences.preferEscrow).toBe(true);
+  });
+
+  it("migrates v1 config to v2 with partner sources and merchants", async () => {
+    writeFileSync(
+      join(tempDir, "config.json"),
+      JSON.stringify({
+        version: 1,
+        wallet: { mode: "privy" },
+        spending: { perCallMaxUsdc: "5.00", dailyCapUsdc: "50.00" },
+        endpointSources: ["https://x402.onchainexpat.com"],
+        customEndpoints: [],
+        preferences: { preferEscrow: false, preferredNetwork: "evm" },
+        allowlist: {
+          enabled: true,
+          merchants: ["0xd8ba61a0b0974db0ec8e325c7628470526558e9b"],
+        },
+      }),
+    );
+
+    const { loadConfig } = await import("../../../src/store/config.js");
+    const config = loadConfig();
+
+    // Version bumped
+    expect(config.version).toBe(2);
+    // Partner sources appended
+    expect(config.endpointSources).toContain("https://x402.onchainexpat.com");
+    expect(config.endpointSources).toContain("https://stableenrich.dev");
+    expect(config.endpointSources).toContain("https://stablestudio.dev");
+    expect(config.endpointSources).toContain("https://x402.twit.sh");
+    // Partner merchants appended
+    expect(config.allowlist.merchants).toContain("0xd8ba61a0b0974db0ec8e325c7628470526558e9b");
+    expect(config.allowlist.merchants).toContain("0x325bdf6f7efab24a2210c48c1b64cab2eae1d430");
+    expect(config.allowlist.merchants).toContain("0xfbd7b7ed48146ad9beff956212c77ce056815ad0");
+    expect(config.allowlist.merchants).toContain("0x9dba414637c611a16bea6f0796bfcbcbdc410df8");
+    // Persisted to disk
+    const raw = JSON.parse(readFileSync(join(tempDir, "config.json"), "utf-8"));
+    expect(raw.version).toBe(2);
+  });
+
+  it("migration is idempotent — no duplicates on second load", async () => {
+    writeFileSync(
+      join(tempDir, "config.json"),
+      JSON.stringify({
+        version: 1,
+        wallet: { mode: "privy" },
+        spending: { perCallMaxUsdc: "5.00", dailyCapUsdc: "50.00" },
+        endpointSources: ["https://x402.onchainexpat.com"],
+        customEndpoints: [],
+        preferences: { preferEscrow: false, preferredNetwork: "evm" },
+        allowlist: {
+          enabled: true,
+          merchants: ["0xd8ba61a0b0974db0ec8e325c7628470526558e9b"],
+        },
+      }),
+    );
+
+    const { loadConfig } = await import("../../../src/store/config.js");
+    const first = loadConfig();
+    const second = loadConfig();
+
+    // No duplicates
+    const uniqueSources = [...new Set(second.endpointSources)];
+    expect(second.endpointSources).toEqual(uniqueSources);
+    const uniqueMerchants = [...new Set(second.allowlist.merchants)];
+    expect(second.allowlist.merchants).toEqual(uniqueMerchants);
+    // Counts match
+    expect(second.endpointSources.length).toBe(first.endpointSources.length);
+    expect(second.allowlist.merchants.length).toBe(first.allowlist.merchants.length);
   });
 
   it("saveConfig writes to disk", async () => {

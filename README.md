@@ -89,6 +89,18 @@ Claude: ✓ Wallet recovered — same address, same balance.
 
 If you have multiple wallets linked to the same email, you'll be shown each wallet's address and USDC balance so you can choose which one to load.
 
+### Your Keys Are Always Yours
+
+No private key is ever stored on your machine. All keys live in [Privy's](https://www.privy.io/) HSM/TEE secure enclaves — hardware security modules that never expose raw key material.
+
+Once you link your email with `wallet_link`, you can:
+
+- **Export your private key** at [home.privy.io](https://home.privy.io) — log in with your email, verify via OTP, and click "Export keys"
+- **Recover your wallet** on any device using `wallet_recover` with the same email
+- **Access your funds** even if this package, the x402 provisioning service, or our website disappears entirely
+
+This works for all wallet modes (proxy, linked, and BYOK). You do not need your own Privy credentials — the default setup is fully recoverable and exportable after linking your email.
+
 ### Power Users: Bring Your Own Privy Credentials
 
 For full control, sign up for a [Privy](https://www.privy.io/) account and pass your own credentials. This bypasses the proxy and talks directly to Privy:
@@ -99,8 +111,6 @@ claude mcp add x402-wallet \
   -e PRIVY_APP_SECRET=your-app-secret \
   -- npx x402-wallet-mcp
 ```
-
-With your own Privy credentials, you can recover your wallet directly at [home.privy.io](https://home.privy.io) using email/phone + 2FA — independent of the x402 provisioning service.
 
 ## How It Works
 
@@ -246,15 +256,21 @@ All persistent data is stored in `~/.x402-wallet/`:
 
 ```json
 {
-  "version": 1,
-  "wallet": { "mode": "proxy", "proxyWalletId": null, "proxyWalletSecret": null },
+  "version": 2,
+  "wallet": { "mode": "proxy" },
   "spending": { "perCallMaxUsdc": "5.00", "dailyCapUsdc": "50.00" },
-  "endpointSources": ["https://x402.onchainexpat.com", "https://padelmaps.org"],
+  "endpointSources": [
+    "https://x402.onchainexpat.com",
+    "https://padelmaps.org",
+    "https://stableenrich.dev",
+    "https://stablestudio.dev",
+    "https://x402.twit.sh"
+  ],
   "preferences": { "preferEscrow": false, "preferredNetwork": "evm" }
 }
 ```
 
-> **Note:** The default mode is `"proxy"` (zero-config). Use `wallet_link` to upgrade to `"linked"` mode with email recovery. When `PRIVY_APP_ID` and `PRIVY_APP_SECRET` env vars are set, the wallet automatically switches to `"privy"` mode.
+> **Note:** The default mode is `"proxy"` (zero-config). Use `wallet_link` to upgrade to `"linked"` mode with email recovery and key export. When `PRIVY_APP_ID` and `PRIVY_APP_SECRET` env vars are set, the wallet automatically switches to `"privy"` mode.
 
 ## Architecture
 
@@ -386,7 +402,9 @@ The server communicates over stdio (JSON-RPC), so you need an MCP client to inte
 > [!IMPORTANT]
 > This software manages real cryptocurrency. Review the [security policy](SECURITY.md) before using in production.
 
-- **HSM-backed keys**: Whether using proxy or direct Privy mode, keys never leave Privy's HSM/TEE infrastructure.
+- **No keys on your machine**: Private keys are never stored locally — not in plaintext, not encrypted, not anywhere on disk. All keys live in Privy's HSM/TEE secure enclaves.
+- **Survivable**: If this package, the x402 provisioning service, or our website disappears, go to [home.privy.io](https://home.privy.io), log in with your linked email, and export your private key. Your funds are always accessible.
+- **HSM-backed signing**: Whether using proxy or direct Privy mode, keys never leave Privy's hardware security modules.
 - **Proxy signing validation**: The hosted proxy validates every signing request — only USDC transfers on Base, capped at 100 USDC per transaction.
 - **Spending limits**: Enforced locally before signing. Cannot be bypassed by the AI agent.
 - **No stdout leaks**: All logging goes to stderr. stdout is reserved for MCP JSON-RPC. Private keys never appear in logs.

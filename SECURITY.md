@@ -30,27 +30,27 @@ This policy covers:
 
 ### What x402-wallet-mcp Protects Against
 
+- **Key exposure**: Private keys are never stored on your machine — not in plaintext, not encrypted, not anywhere. All keys live in Privy's HSM/TEE secure enclaves.
 - **Key exposure in logs**: Private keys never appear in log output. All logging goes to stderr.
-- **Plaintext key storage**: Local mode encrypts keys with AES-256-GCM (scrypt key derivation).
+- **Service disappearance**: If this package or the x402 provisioning service goes offline, you can always export your private key at [home.privy.io](https://home.privy.io) using your linked email.
 - **Runaway spending**: Per-call maximum and daily cap enforced locally before signing.
 - **Replay attacks**: Exact payments use random nonces. Escrow payments use deterministic nonces tied to payment parameters.
-- **File permission escalation**: Keystore created with `0600` permissions.
+- **File permission escalation**: Config files created with `0600` permissions.
 
 ### What x402-wallet-mcp Does NOT Protect Against
 
-- **Local machine compromise**: If an attacker has access to your machine and can read `~/.x402-wallet/keystore.json` and knows (or can guess) the encryption password, they can extract the private key. Use `X402_WALLET_PASSWORD` with a strong password, or use Privy mode for production.
-- **Default password weakness**: The convenience default password is derived from `hostname + username`. This is NOT secure against local attackers. It only prevents accidental key loss.
+- **Local machine compromise**: An attacker with access to `~/.x402-wallet/config.json` could read your wallet ID and proxy secret, enabling them to sign transactions through the proxy service (subject to its rate limits and per-tx caps). Link your email and use spending limits as defense in depth.
 - **AI agent manipulation**: If an AI agent is tricked into calling `call_endpoint` with a malicious URL, spending limits are the last line of defense. Set conservative limits.
 - **Network-level attacks**: HTTPS is assumed. The server does not implement certificate pinning.
 - **Smart contract bugs**: Payment verification happens on-chain. This project signs payments but does not verify the receiving contracts.
 
 ## Recommendations
 
-| Environment | Wallet Mode | Password | Spending Limits |
-|-------------|-------------|----------|-----------------|
-| Personal/dev | Local | Set `X402_WALLET_PASSWORD` | Default ($5/$50) |
-| CI/CD | BYOK | N/A | Tight limits |
-| Production | Privy | N/A | Configured per use case |
+| Environment | Wallet Mode | Spending Limits |
+|-------------|-------------|-----------------|
+| Personal/dev | Proxy + email link | Default ($5/$50) |
+| CI/CD | BYOK (direct Privy) | Tight limits |
+| Production | BYOK (direct Privy) | Configured per use case |
 
 ## Supported Versions
 

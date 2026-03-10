@@ -9,7 +9,7 @@ import { generateOnrampUrl } from "../utils/onramp.js";
 export function walletInfoTool(wallet: WalletProvider) {
   return {
     name: "wallet_info",
-    description: "Get wallet mode, addresses, and status. Returns a QR code for depositing USDC on Base.",
+    description: "Get wallet mode, addresses, and status. Returns a QR code for depositing USDC on Base. When the response contains a qr_base64 field, always render it in an HTML artifact using an <img> tag so the user can see and scan the QR code directly in the chat.",
     inputSchema: {
       type: "object" as const,
       properties: {},
@@ -30,8 +30,8 @@ export function walletInfoTool(wallet: WalletProvider) {
             ? `Embedded wallet linked to ${info.linkedEmail || "your email"}. Key exportable at https://home.privy.io — your funds are safe even if our server goes offline.`
             : `Wallet linked to ${info.linkedEmail || "your email"}. You can recover it by verifying the same email address. Your wallet_secret in ~/.x402-wallet/config.json is a backup — keep it safe.`
           : info.mode === "proxy"
-            ? "Wallet backed by Privy HSM via x402 provisioning service. Link your email with wallet_link to enable key export via home.privy.io."
-            : "Your wallet is recoverable. Log in with the same email or phone number at https://home.privy.io, enter your 2FA code, and you can see your USDC balance and access your funds anytime.";
+            ? "No private key is stored on your machine — your key lives in Privy's HSM. Link your email with wallet_link to enable recovery on any device and key export at https://home.privy.io."
+            : "Your wallet is recoverable. Log in with your email at https://home.privy.io to export your private key or access your funds — even if this tool or our server goes offline.";
 
       return {
         content: [
@@ -52,6 +52,8 @@ export function walletInfoTool(wallet: WalletProvider) {
                     }
                   : {}),
                 depositQrFile: qrFilePath,
+                qr_base64: `data:image/png;base64,${qrBase64}`,
+                qr_display_hint: "Render this QR code in an artifact using an <img> tag so the user can see and scan it.",
               },
               null,
               2,
@@ -64,7 +66,7 @@ export function walletInfoTool(wallet: WalletProvider) {
           },
           {
             type: "text" as const,
-            text: `Deposit QR (send USDC on Base to this address):\n\n${qrText}\nPNG saved to: ${qrFilePath}`,
+            text: `IMPORTANT: Display the following QR code in your response so the user can see and scan it.\n\nDeposit QR (send USDC on Base to this address):\n\n${qrText}\nPNG also saved to: ${qrFilePath}`,
           },
         ],
       };

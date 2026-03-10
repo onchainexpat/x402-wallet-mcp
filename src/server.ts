@@ -95,6 +95,10 @@ export function createServer(wallet: WalletProvider): McpServer {
         .boolean()
         .optional()
         .describe("Prefer escrow payment if available (default: false)"),
+      confirmed: z
+        .boolean()
+        .optional()
+        .describe("Set to true after user confirms a payment that exceeded the auto-approve threshold"),
     },
     guardWallet(wallet, (params) => callEndpoint.handler(params)),
   );
@@ -156,6 +160,10 @@ export function createServer(wallet: WalletProvider): McpServer {
         .string()
         .optional()
         .describe("Maximum USDC per day (e.g. '50.00')"),
+      auto_approve_threshold: z
+        .string()
+        .optional()
+        .describe("Auto-approve threshold in USDC — payments under this execute without confirmation (e.g. '0.05')"),
     },
     async (params) => spending.handler(params),
   );

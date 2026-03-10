@@ -28,7 +28,7 @@ export interface TransactionEntry {
   error?: string;
 }
 
-function pickAcceptEntry(
+export function pickAcceptEntry(
   accepts: AcceptEntry[],
   preferEscrow: boolean,
 ): AcceptEntry | null {
