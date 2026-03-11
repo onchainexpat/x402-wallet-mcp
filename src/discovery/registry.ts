@@ -98,14 +98,22 @@ export async function discoverEndpoints(
     saveCache(deduped);
   }
 
-  // Filter by query if provided
+  // Filter by query if provided (word-based: any word can match URL or description)
   if (query) {
-    const q = query.toLowerCase();
-    return deduped.filter(
-      (ep) =>
-        ep.url.toLowerCase().includes(q) ||
-        ep.description.toLowerCase().includes(q),
-    );
+    const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+    if (words.length === 0) return deduped;
+
+    // Score each endpoint by how many query words match
+    const scored = deduped
+      .map((ep) => {
+        const haystack = `${ep.url} ${ep.description}`.toLowerCase();
+        const hits = words.filter((w) => haystack.includes(w)).length;
+        return { ep, hits };
+      })
+      .filter(({ hits }) => hits > 0)
+      .sort((a, b) => b.hits - a.hits);
+
+    return scored.map(({ ep }) => ep);
   }
 
   return deduped;
