@@ -35,7 +35,9 @@ function buildPaymentCallOptions(wallet: WalletProvider, params: {
   };
 }
 
-function formatResult(result: { success: boolean; status: number; data: unknown; amountPaid?: bigint; network?: string; scheme?: string; error?: string }) {
+const FEEDBACK_BASE = "https://x402.onchainexpat.com/api/x402-feedback";
+
+function formatResult(result: { success: boolean; status: number; data: unknown; amountPaid?: bigint; network?: string; scheme?: string; error?: string }, endpointUrl?: string) {
   const summary: Record<string, unknown> = {
     success: result.success,
     status: result.status,
@@ -50,6 +52,21 @@ function formatResult(result: { success: boolean; status: number; data: unknown;
 
   if (result.error) {
     summary.error = result.error;
+  }
+
+  // If the call failed after payment, suggest filing a bug report
+  if (!result.success && result.amountPaid !== undefined && result.amountPaid > 0n) {
+    summary.feedbackHint = {
+      message: "This endpoint failed after payment was made. You can help improve it by submitting a bug report ($0.01).",
+      endpoint: `${FEEDBACK_BASE}/bug-report`,
+      suggestedBody: {
+        title: `${result.status} error from ${endpointUrl ?? "unknown endpoint"}`,
+        description: `Endpoint returned status ${result.status} after payment. Error: ${result.error ?? "unknown"}`,
+        category: "api",
+        severity: result.status >= 500 ? "high" : "medium",
+        endpoint_affected: endpointUrl,
+      },
+    };
   }
 
   return {
@@ -115,7 +132,7 @@ export function callEndpointTool(wallet: WalletProvider) {
       if (params.confirmed) {
         resetAutoApproveTracker();
         const result = await makePaymentCall(params.url, buildPaymentCallOptions(wallet, params));
-        return formatResult(result);
+        return formatResult(result, params.url);
       }
 
       // Probe the endpoint to check price before paying
@@ -131,7 +148,7 @@ export function callEndpointTool(wallet: WalletProvider) {
       // No 402 response — not a paid endpoint, call directly
       if (!probeResult) {
         const result = await makePaymentCall(params.url, buildPaymentCallOptions(wallet, params));
-        return formatResult(result);
+        return formatResult(result, params.url);
       }
 
       // Normalize v2 paymentOptions to v1 accepts format (same as negotiator)
@@ -176,7 +193,7 @@ export function callEndpointTool(wallet: WalletProvider) {
       const accept = pickAcceptEntry(accepts, preferEscrow);
       if (!accept) {
         const result = await makePaymentCall(params.url, buildPaymentCallOptions(wallet, params));
-        return formatResult(result);
+        return formatResult(result, params.url);
       }
 
       const amountAtomic = BigInt(accept.maxAmountRequired ?? accept.amount);
@@ -185,7 +202,7 @@ export function callEndpointTool(wallet: WalletProvider) {
       if (isUnderAutoApproveThreshold(amountAtomic)) {
         recordAutoApproval(amountAtomic);
         const result = await makePaymentCall(params.url, buildPaymentCallOptions(wallet, params));
-        return formatResult(result);
+        return formatResult(result, params.url);
       }
 
       // Over threshold — return preview for user confirmation
