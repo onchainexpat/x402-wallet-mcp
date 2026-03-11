@@ -87,7 +87,7 @@ export function callEndpointTool(wallet: WalletProvider) {
   return {
     name: "call_endpoint",
     description:
-      "Make a paid API call to an x402-protected endpoint. Handles 402 payment negotiation automatically. Payments under the auto-approve threshold (default $0.05) execute silently. Payments over the threshold return a preview — call again with confirmed: true after user approves.",
+      "Make a paid API call to an x402-protected endpoint. Handles 402 payment negotiation automatically. Payments under the auto-approve threshold (default $0.05) execute silently. Payments over the threshold return a preview — call again with confirmed: true after user approves. Use discover_endpoints first to find the right URL if you don't know it.",
     inputSchema: {
       type: "object" as const,
       properties: {
