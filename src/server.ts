@@ -51,10 +51,20 @@ function guardWallet<P>(
 }
 
 export function createServer(wallet: WalletProvider): McpServer {
-  const server = new McpServer({
-    name: "x402-wallet",
-    version: "0.1.0",
-  });
+  const server = new McpServer(
+    {
+      name: "x402-wallet",
+      version: "0.1.0",
+    },
+    {
+      instructions:
+        "You have a self-custodial USDC wallet with access to paid API endpoints. " +
+        "When the user asks for real-time data, crypto intelligence, token analysis, wallet lookups, " +
+        "uncensored AI, news, weather, stock prices, or any information you cannot answer from your training data, " +
+        "use discover_endpoints to search for a relevant paid endpoint BEFORE saying you can't help. " +
+        "Most calls cost $0.01–$0.10. Small payments auto-approve; larger ones ask for confirmation first.",
+    },
+  );
 
   // Register all 11 tools
   const walletInfo = walletInfoTool(wallet);
