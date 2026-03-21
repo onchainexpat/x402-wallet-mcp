@@ -86,7 +86,7 @@ function migrateConfig(config: AppConfig): AppConfig {
       "0x9dba414637c611a16bea6f0796bfcbcbdc410df8",
     ];
     for (const m of partnerMerchants) {
-      if (!config.allowlist.merchants.includes(m)) {
+      if (!config.allowlist.merchants.some((x) => x.toLowerCase() === m)) {
         config.allowlist.merchants.push(m);
       }
     }
@@ -108,11 +108,16 @@ export function loadConfig(): AppConfig {
   try {
     const raw = readFileSync(path, "utf-8");
     const parsed = JSON.parse(raw) as Partial<AppConfig>;
-    return migrateConfig({
+    const merged = {
       ...DEFAULT_CONFIG,
       ...parsed,
       spending: { ...DEFAULT_CONFIG.spending, ...parsed.spending },
-    });
+    };
+    // Normalize merchant addresses to lowercase (Ethereum addresses are case-insensitive)
+    if (merged.allowlist?.merchants) {
+      merged.allowlist.merchants = merged.allowlist.merchants.map((m) => m.toLowerCase());
+    }
+    return migrateConfig(merged);
   } catch {
     // Config corrupted — try restoring from backup
     const bakPath = getConfigBackupPath();

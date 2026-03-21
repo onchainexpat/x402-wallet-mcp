@@ -102,6 +102,46 @@ describe("merchant allowlist", () => {
     expect(result.allowed).toBe(true);
   });
 
+  it("matches checksummed merchant stored in config", async () => {
+    const { loadConfig, updateConfig } = await import(
+      "../../../src/store/config.js"
+    );
+    // Simulate a config with checksummed (mixed-case) merchant address
+    const checksummed = "0x6E5adF9C1234567890AbCdEf1234567890AbCdEf";
+    const config = loadConfig();
+    updateConfig({
+      ...config,
+      allowlist: {
+        ...config.allowlist,
+        merchants: [...config.allowlist.merchants, checksummed],
+      },
+    });
+
+    const { checkMerchantAllowlist } = await import(
+      "../../../src/spending/allowlist.js"
+    );
+    // Query with the same checksummed address — should match
+    const result1 = checkMerchantAllowlist(
+      checksummed,
+      "https://example.com/api",
+    );
+    expect(result1.allowed).toBe(true);
+
+    // Query with all-lowercase — should also match
+    const result2 = checkMerchantAllowlist(
+      checksummed.toLowerCase(),
+      "https://example.com/api",
+    );
+    expect(result2.allowed).toBe(true);
+
+    // Query with all-uppercase (except 0x prefix) — should also match
+    const result3 = checkMerchantAllowlist(
+      "0x6E5ADF9C1234567890ABCDEF1234567890ABCDEF",
+      "https://example.com/api",
+    );
+    expect(result3.allowed).toBe(true);
+  });
+
   it("default config includes our merchant", async () => {
     const { loadConfig } = await import("../../../src/store/config.js");
     const config = loadConfig();

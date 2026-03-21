@@ -17,7 +17,7 @@ export function checkMerchantAllowlist(
   }
 
   const normalized = payTo.toLowerCase();
-  if (config.allowlist.merchants.includes(normalized)) {
+  if (config.allowlist.merchants.some((m) => m.toLowerCase() === normalized)) {
     return { allowed: true };
   }
 
