@@ -4,6 +4,14 @@
   "description": "Self-custodial USDC wallet + x402 payment signing as an MCP server for AI agents",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/onchainexpat/x402-wallet-mcp.git"
+  },
+  "homepage": "https://github.com/onchainexpat/x402-wallet-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/onchainexpat/x402-wallet-mcp/issues"
+  },
   "bin": {
     "x402-wallet-mcp": "dist/bin/x402-wallet-mcp.js"
   },
