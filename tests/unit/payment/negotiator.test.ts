@@ -17,6 +17,11 @@ vi.mock("../../../src/payment/evm-escrow.js", () => ({
 vi.mock("../../../src/spending/allowlist.js", () => ({
   checkMerchantAllowlist: vi.fn().mockReturnValue({ allowed: true }),
 }));
+// Mock the pre-flight balance check so it doesn't issue its own RPC fetch,
+// which would otherwise consume a queued mockFetch response meant for the paid retry.
+vi.mock("../../../src/utils/balance.js", () => ({
+  getUsdcBalance: vi.fn().mockResolvedValue(1_000_000_000n),
+}));
 
 function createMockWallet(): WalletProvider {
   return {
