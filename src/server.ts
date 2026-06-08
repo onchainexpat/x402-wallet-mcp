@@ -1,5 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { createRequire } from "node:module";
 import type { WalletProvider } from "./wallet/types.js";
 import { walletInfoTool } from "./tools/wallet-info.js";
 import { checkBalanceTool } from "./tools/check-balance.js";
@@ -14,6 +15,9 @@ import { fundWalletTool } from "./tools/fund-wallet.js";
 import { walletLinkTool } from "./tools/wallet-link.js";
 import { walletRecoverTool } from "./tools/wallet-recover.js";
 import { exportKeyTool } from "./tools/export-key.js";
+
+const require = createRequire(import.meta.url);
+const packageJson = require("../package.json") as { version: string };
 
 type ToolResult = {
   [x: string]: unknown;
@@ -54,7 +58,7 @@ export function createServer(wallet: WalletProvider): McpServer {
   const server = new McpServer(
     {
       name: "x402-wallet",
-      version: "0.1.0",
+      version: packageJson.version,
     },
     {
       instructions:
