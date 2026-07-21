@@ -259,6 +259,7 @@ export async function makePaymentCall(
     headers: {
       ...requestHeaders,
       "X-PAYMENT": xPayment,
+      "PAYMENT-SIGNATURE": xPayment,
     },
     body,
     retries: 0, // Don't retry after signing — authorization might be consumed
