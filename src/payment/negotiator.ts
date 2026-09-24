@@ -11,6 +11,15 @@ import { checkMerchantAllowlist } from "../spending/allowlist.js";
 import { getUsdcBalance } from "../utils/balance.js";
 import { formatUsdc } from "../utils/format.js";
 import { logger } from "../utils/logger.js";
+import { createPayGuardPreSignGate } from "./payguard.js";
+
+const payGuardGate = process.env.PAYGUARD_CLIENT_TOKEN
+  ? createPayGuardPreSignGate({
+      token: process.env.PAYGUARD_CLIENT_TOKEN,
+      agentId: process.env.PAYGUARD_AGENT_ID ?? "x402-wallet-mcp",
+      baseUrl: process.env.PAYGUARD_URL,
+    })
+  : null;
 
 export interface NegotiatorOptions {
   wallet: WalletProvider;
@@ -203,6 +212,28 @@ export async function makePaymentCall(
       network,
       scheme,
     };
+  }
+
+  // Optional independent policy check. It runs after the wallet's local controls
+  // and before any signing call. Every result except a matching ALLOW fails closed.
+  if (payGuardGate) {
+    const authorization = await payGuardGate({ url, method, accept });
+    if (!authorization.allowed) {
+      return {
+        success: false,
+        status: 402,
+        data: {
+          error: "payguard_denied",
+          decision: authorization.decision,
+          reasons: authorization.reasons,
+          receiptId: authorization.receiptId,
+        },
+        error: `Independent pre-sign authorization returned ${authorization.decision}`,
+        amountPaid: 0n,
+        network,
+        scheme,
+      };
+    }
   }
 
   // Step 4b: Pre-flight balance check
