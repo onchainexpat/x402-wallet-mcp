@@ -28,7 +28,9 @@ export interface PaymentRequired {
   resource?: {
     url?: string;
     method?: string;
+    [key: string]: unknown;
   };
+  extensions?: Record<string, unknown>;
 }
 
 /** Authorization data included in the payment payload */
@@ -67,6 +69,17 @@ export interface ExactPaymentPayload {
   };
 }
 
+export interface ExactPaymentPayloadV2 {
+  x402Version: 2;
+  accepted: AcceptEntry;
+  payload: {
+    signature: string;
+    authorization: Authorization;
+  };
+  resource?: PaymentRequired["resource"];
+  extensions?: Record<string, unknown>;
+}
+
 export interface EscrowPaymentPayload {
   x402Version: 2;
   scheme: "escrow";
@@ -80,7 +93,7 @@ export interface EscrowPaymentPayload {
   accepted: AcceptEntry;
 }
 
-export type PaymentPayload = ExactPaymentPayload | EscrowPaymentPayload;
+export type PaymentPayload = ExactPaymentPayload | ExactPaymentPayloadV2 | EscrowPaymentPayload;
 
 /** Result of a negotiated payment call */
 export interface PaymentResult {

@@ -80,6 +80,29 @@ describe("EVM Exact payment signing", () => {
     const decoded = JSON.parse(atob(encoded));
     expect(decoded.network).toBe("base");
   });
+
+  it("signs x402 v2 exact with accepted requirements and extensions", async () => {
+    const wallet = createTestWallet();
+    const accept: AcceptEntry = {
+      scheme: "exact", network: "eip155:8453", amount: "5000",
+      payTo: "0xa9a52a066e342e2ED2488BBdb9fAd95EFd3D9FD4",
+      asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      maxTimeoutSeconds: 60, extra: { name: "USD Coin", version: "2" },
+    };
+    const requirements = {
+      x402Version: 2, accepts: [accept],
+      resource: { url: "https://example.com/v1/preflight", description: "CSV preflight" },
+      extensions: { bazaar: { example: true } },
+    };
+    const decoded = JSON.parse(atob(await signExactPayment(wallet, accept, requirements)));
+    expect(decoded.x402Version).toBe(2);
+    expect(decoded.accepted).toEqual(accept);
+    expect(decoded.resource).toEqual(requirements.resource);
+    expect(decoded.extensions).toEqual(requirements.extensions);
+    expect(decoded.payload.authorization.value).toBe("5000");
+    expect(decoded.payload.signature).toMatch(/^0x[0-9a-f]{130}$/i);
+    expect(decoded.scheme).toBeUndefined();
+  });
 });
 
 describe("Escrow nonce computation", () => {

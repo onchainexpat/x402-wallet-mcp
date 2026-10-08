@@ -5,7 +5,7 @@
 
 import { randomBytes } from "node:crypto";
 import type { WalletProvider } from "../wallet/types.js";
-import type { AcceptEntry, ExactPaymentPayload, Authorization } from "./types.js";
+import type { AcceptEntry, ExactPaymentPayload, ExactPaymentPayloadV2, Authorization, PaymentRequired } from "./types.js";
 import { NETWORK_MAP } from "./constants.js";
 
 const TRANSFER_WITH_AUTH_TYPES = {
@@ -22,6 +22,7 @@ const TRANSFER_WITH_AUTH_TYPES = {
 export async function signExactPayment(
   wallet: WalletProvider,
   accept: AcceptEntry,
+  requirements?: PaymentRequired,
 ): Promise<string> {
   const rawNetwork = accept.network;
   let sdkNetwork: string;
@@ -79,7 +80,13 @@ export async function signExactPayment(
     nonce: nonceHex,
   };
 
-  const paymentPayload: ExactPaymentPayload = {
+  const paymentPayload: ExactPaymentPayload | ExactPaymentPayloadV2 = requirements?.x402Version === 2 ? {
+    x402Version: 2,
+    accepted: accept,
+    payload: { signature, authorization },
+    ...(requirements.resource ? { resource: requirements.resource } : {}),
+    ...(requirements.extensions ? { extensions: requirements.extensions } : {}),
+  } : {
     x402Version: 1,
     scheme: "exact",
     network: sdkNetwork,

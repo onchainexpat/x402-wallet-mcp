@@ -127,6 +127,33 @@ describe("negotiator: makePaymentCall", () => {
     expect(recorded[0].amount).toBe("2000");
   });
 
+  it("uses PAYMENT-SIGNATURE for an x402 v2 exact paid retry", async () => {
+    const challenge = {
+      x402Version: 2,
+      accepts: [{
+        scheme: "exact", network: "eip155:8453", amount: "5000",
+        payTo: "0xa9a52a066e342e2ED2488BBdb9fAd95EFd3D9FD4",
+        asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        extra: { name: "USD Coin", version: "2" },
+      }],
+      resource: { url: "https://example.com/v1/preflight" },
+    };
+    mockFetch.mockResolvedValueOnce(makeResponse(402, challenge, {
+      "PAYMENT-REQUIRED": btoa(JSON.stringify(challenge)),
+    })).mockResolvedValueOnce(makeResponse(200, { importReady: true }));
+    const { makePaymentCall } = await import("../../../src/payment/negotiator.js");
+    const result = await makePaymentCall("https://example.com/v1/preflight", {
+      wallet: createMockWallet(), checkSpendingLimit: () => ({ allowed: true }),
+      recordTransaction: (e) => recorded.push(e),
+      body: JSON.stringify({ csv: "id\n1\n" }),
+    });
+    expect(result.success).toBe(true);
+    const headers = mockFetch.mock.calls[1][1].headers as Record<string, string>;
+    expect(headers["PAYMENT-SIGNATURE"]).toBeDefined();
+    expect(headers["X-PAYMENT"]).toBeUndefined();
+    expect(recorded).toHaveLength(1);
+  });
+
   it("rejects when spending limit is exceeded", async () => {
     mockFetch.mockResolvedValueOnce(
       makeResponse(402, {
