@@ -43,7 +43,16 @@
     "msw": "^2.7.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
-    "vitest": "^3.0.0"
+    "vitest": "^3.0.0",
+    "x402-spotcheck": "github:withgrokbot/x402-spotcheck#v1.0.0"
+  },
+  "peerDependencies": {
+    "x402-spotcheck": "^1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "x402-spotcheck": {
+      "optional": true
+    }
   },
   "engines": {
     "node": ">=18.0.0"

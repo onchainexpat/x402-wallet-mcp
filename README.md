@@ -200,6 +200,20 @@ The daily cap resets at midnight UTC. Both limits can also be changed at runtime
 
 If a payment would exceed either limit, the tool returns an error explaining why — the agent can then ask the user for approval or skip the call.
 
+### Optional: check terms against your listing (off by default)
+
+If you know what an endpoint should cost and who it should pay, you can have the wallet compare each 402 with those terms before it signs. Install the optional peer dependency and point `X402_SPOTCHECK_LISTINGS` at a JSON file:
+
+```bash
+npm i github:withgrokbot/x402-spotcheck#v1.0.0
+```
+
+```json
+{ "https://api.example.com/v1/summarize": { "price": 0.01, "payTo": "0x…", "network": "eip155:8453" } }
+```
+
+The check runs locally (no network calls) after the allowlist, spending and balance checks and before signing. On Base mainnet it refuses a different `payTo` or network, a non-USDC asset, or a price more than 1% above the listing (`spotcheck_blocked`); a cheaper price is fine. Anything it cannot judge passes through: no listing for the URL, other networks, an unreadable file, the package not installed, or an error in the check.
+
 ## Payment Schemes
 
 ### Exact (EIP-3009 TransferWithAuthorization)
@@ -235,6 +249,7 @@ The tool auto-detects which scheme to use based on the server's `accepts` array.
 | `X402_DAILY_CAP` | Max USDC per day (e.g. `"100.00"`) | No |
 | `X402_RPC_URL` | Custom Base RPC endpoint | No |
 | `X402_SKIP_LINKING` | Skip email link prompt on first run | No |
+| `X402_SPOTCHECK_LISTINGS` | Path to a JSON file of expected terms per URL; enables the optional pre-sign check (needs `x402-spotcheck`) | No |
 
 **No environment variables are required.** The wallet works zero-config out of the box, including Coinbase Onramp for buying USDC.
 

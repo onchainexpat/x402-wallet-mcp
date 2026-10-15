@@ -11,6 +11,9 @@ import { checkMerchantAllowlist } from "../spending/allowlist.js";
 import { getUsdcBalance } from "../utils/balance.js";
 import { formatUsdc } from "../utils/format.js";
 import { logger } from "../utils/logger.js";
+import { spotCheckGateFromEnv } from "./spotcheck.js";
+
+const spotCheckGate = spotCheckGateFromEnv();
 
 export interface NegotiatorOptions {
   wallet: WalletProvider;
@@ -231,6 +234,23 @@ export async function makePaymentCall(
   } catch (err) {
     // Balance check failed — proceed anyway, let the server catch it
     logger.warn(`Pre-flight balance check failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // Step 4c: Optional local check of the terms against your listing (X402_SPOTCHECK_LISTINGS).
+  // Off unless set; anything unknown lets the payment proceed.
+  if (spotCheckGate) {
+    const spot = await spotCheckGate({ url, method, accept, paymentRequired });
+    if (!spot.allowed) {
+      return {
+        success: false,
+        status: 402,
+        data: { error: "spotcheck_blocked", detail: spot.reason },
+        error: spot.reason,
+        amountPaid: 0n,
+        network,
+        scheme,
+      };
+    }
   }
 
   // Step 5: Sign payment
