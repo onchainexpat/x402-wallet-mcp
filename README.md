@@ -35,7 +35,7 @@ This project is the missing piece: an open-source MCP server that gives any AI a
 - **Three wallet modes** — Proxy (zero-config default), Linked (email-recoverable), or Privy direct (BYOK)
 - **Email recovery** — link your wallet to an email, recover it on any device via OTP
 - **Full x402 negotiation** — handles 402 → sign → retry automatically
-- **EVM exact + escrow** — EIP-3009 TransferWithAuthorization and ReceiveWithAuthorization
+- **EVM exact + commerce (escrow)**: EIP-3009 TransferWithAuthorization and ReceiveWithAuthorization
 - **Endpoint discovery** — fetches `.well-known/x402` documents and searches [x402scan.com](https://x402scan.com)
 - **Spending controls** — per-call maximum and daily cap with automatic enforcement
 - **Transaction history** — append-only log of every payment
@@ -211,16 +211,17 @@ The default and most common scheme. Signs a one-time USDC transfer authorization
 - **Expiry**: Configurable via `maxTimeoutSeconds` (default 60s)
 - **Nonce**: Random 32 bytes (one-time use)
 
-### Escrow (EIP-3009 ReceiveWithAuthorization)
+### Commerce / escrow (EIP-3009 ReceiveWithAuthorization)
 
-For endpoints that use the [x402r escrow middleware](https://github.com/coinbase/x402). Funds are held in escrow and settled after the API response:
+For endpoints that use x402r's `commerce` scheme (called `escrow` before April 2026; both names are accepted, and the payment answers in the name the server offered). Funds are held in escrow and captured by the merchant's operator after the API response:
 
 - **Type**: `ReceiveWithAuthorization(from, to, value, validAfter, validBefore, nonce)`
-- **to**: Token collector contract (not the final recipient)
-- **Nonce**: Deterministic — computed from `keccak256(chainId, escrowAddress, paymentInfoHash)`
-- **Expiry**: `validAfter=0`, `validBefore=MAX_UINT48`
+- **to**: Token collector contract (not the final recipient). Only x402r's published collectors on Base are accepted, each with its own escrow contract; any other collector is refused before signing, because the collector named in the signature could otherwise redeem it directly.
+- **Nonce**: Deterministic, computed from `keccak256(chainId, escrowAddress, paymentInfoHash)`
+- **Expiry**: `validAfter=0`, `validBefore = preApprovalExpiry = now + maxTimeoutSeconds` (capped at one hour). The capture deadline and refund window stay open-ended.
+- **Network**: Base only
 
-The tool auto-detects which scheme to use based on the server's `accepts` array. By default it prefers exact; pass `prefer_escrow: true` to prefer escrow when both are available.
+The tool auto-detects which scheme to use based on the server's `accepts` array. By default it prefers exact; pass `prefer_escrow: true` to prefer commerce when both are available.
 
 ## Configuration
 

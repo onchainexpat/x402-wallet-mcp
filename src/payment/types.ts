@@ -1,6 +1,9 @@
 /** An accept entry from a 402 response */
+/** "commerce" is x402r's escrow scheme; "escrow" is its name before 2026-04-23. */
+export type PaymentScheme = "exact" | "commerce" | "escrow";
+
 export interface AcceptEntry {
-  scheme: "exact" | "escrow";
+  scheme: PaymentScheme;
   network: string;
   amount: string;
   maxAmountRequired?: string;
@@ -69,7 +72,7 @@ export interface ExactPaymentPayload {
 
 export interface EscrowPaymentPayload {
   x402Version: 2;
-  scheme: "escrow";
+  scheme: "commerce" | "escrow";
   network: string;
   payload: {
     authorization: Authorization;
@@ -89,6 +92,6 @@ export interface PaymentResult {
   data: unknown;
   amountPaid?: bigint;
   network?: string;
-  scheme?: "exact" | "escrow";
+  scheme?: PaymentScheme;
   error?: string;
 }

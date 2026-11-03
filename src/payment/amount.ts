@@ -8,6 +8,7 @@
  */
 
 import type { AcceptEntry } from "./types.js";
+import { isCommerceScheme } from "./commerce.js";
 
 export class PaymentAmountError extends Error {}
 
@@ -31,7 +32,7 @@ export function resolveAcceptAmount(accept: AcceptEntry): bigint {
   // Escrow authorizes a ceiling (maxAmountRequired) and the capture may be
   // lower, so the two can legitimately differ. The escrow signer commits the
   // ceiling everywhere it writes a value, and every gate sees that same ceiling.
-  if (accept.scheme === "escrow") {
+  if (isCommerceScheme(accept.scheme)) {
     return hasMax ? parseAtomic("maxAmountRequired", max) : parseAtomic("amount", amount);
   }
   // Exact transfers move precisely the signed value: one price or nothing.

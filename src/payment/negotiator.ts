@@ -3,10 +3,11 @@
  */
 
 import type { WalletProvider } from "../wallet/types.js";
-import type { AcceptEntry, PaymentRequired, PaymentResult } from "./types.js";
+import type { AcceptEntry, PaymentRequired, PaymentResult, PaymentScheme } from "./types.js";
 import { signExactPayment } from "./evm-exact.js";
 import { signEscrowPayment } from "./evm-escrow.js";
 import { resolveAcceptAmount } from "./amount.js";
+import { isCommerceScheme } from "./commerce.js";
 import { fetchWithRetry, PAID_REQUEST_TIMEOUT } from "../utils/http.js";
 import { checkMerchantAllowlist } from "../spending/allowlist.js";
 import { getUsdcBalance } from "../utils/balance.js";
@@ -24,7 +25,7 @@ export interface TransactionEntry {
   timestamp: string;
   url: string;
   method: string;
-  scheme: "exact" | "escrow";
+  scheme: PaymentScheme;
   network: string;
   amount: string;
   status: "success" | "failed";
@@ -42,7 +43,7 @@ export function pickAcceptEntry(
     (a) => a.scheme === "exact" && a.network.includes("eip155"),
   );
   const evmEscrow = accepts.filter(
-    (a) => a.scheme === "escrow" && a.network.includes("eip155"),
+    (a) => isCommerceScheme(a.scheme) && a.network.includes("eip155"),
   );
 
   if (preferEscrow && evmEscrow.length > 0) return evmEscrow[0];
@@ -63,7 +64,7 @@ export function normalizePaymentRequired(paymentRequired: PaymentRequired): Paym
   if (!paymentRequired.accepts && Array.isArray(raw.paymentOptions)) {
     paymentRequired.accepts = (raw.paymentOptions as Record<string, unknown>[]).map(
       (opt) => ({
-        scheme: ((opt.scheme as string) ?? "exact") as "exact" | "escrow",
+        scheme: ((opt.scheme as string) ?? "exact") as PaymentScheme,
         network: opt.network as string,
         amount: ((opt.priceAtomic as string | undefined) ?? (opt.amount as string | undefined)) as string,
         maxAmountRequired: opt.maxAmountRequired as string | undefined,
@@ -281,7 +282,7 @@ export async function makePaymentCall(
   // Step 5: Sign payment
   let xPayment: string;
   try {
-    if (scheme === "escrow") {
+    if (isCommerceScheme(scheme)) {
       xPayment = await signEscrowPayment(wallet, accept);
     } else {
       xPayment = await signExactPayment(wallet, accept);

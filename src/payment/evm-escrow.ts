@@ -15,7 +15,8 @@ import {
 } from "viem";
 import type { WalletProvider } from "../wallet/types.js";
 import type { AcceptEntry, EscrowPaymentPayload, Authorization, PaymentInfo } from "./types.js";
-import { DEFAULT_CHAIN_ID, ESCROW_ADDRESSES, MAX_UINT48 } from "./constants.js";
+import { DEFAULT_CHAIN_ID, MAX_UINT48 } from "./constants.js";
+import { resolveCommerceContracts } from "./commerce.js";
 import { resolveAcceptAmount } from "./amount.js";
 import { authorizationWindowSeconds } from "./window.js";
 
@@ -90,9 +91,10 @@ export async function signEscrowPayment(
   const asset = accept.asset;
   const tokenName = extra.name ?? "USD Coin";
   const tokenVersion = extra.version ?? "2";
-  const operatorAddress = extra.operatorAddress as string;
-  const escrowAddress = extra.escrowAddress ?? ESCROW_ADDRESSES.escrow;
-  const tokenCollector = extra.tokenCollector as string;
+  // Only known x402r contracts on Base; throws for anything else.
+  const { escrowAddress, tokenCollector, operatorAddress } = resolveCommerceContracts(accept);
+  // Answer in the scheme name the server offered ("commerce", or legacy "escrow").
+  const scheme = accept.scheme === "escrow" ? "escrow" : "commerce";
 
   // Generate salt
   const saltHex = `0x${randomBytes(32).toString("hex")}`;
@@ -165,7 +167,7 @@ export async function signEscrowPayment(
 
   const paymentPayload: EscrowPaymentPayload = {
     x402Version: 2,
-    scheme: "escrow",
+    scheme,
     network: "eip155:8453",
     payload: {
       authorization,
@@ -174,7 +176,7 @@ export async function signEscrowPayment(
     },
     resource: { method: "POST" },
     accepted: {
-      scheme: "escrow",
+      scheme,
       network: "eip155:8453",
       amount: String(amount),
       payTo: accept.payTo,

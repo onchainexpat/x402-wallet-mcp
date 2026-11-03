@@ -339,6 +339,39 @@ describe("negotiator: makePaymentCall", () => {
     expect(signEscrowPayment).toHaveBeenCalled();
   });
 
+  it("pays a commerce-only option through the escrow signer", async () => {
+    const { signEscrowPayment } = await import("../../../src/payment/evm-escrow.js");
+    mockFetch
+      .mockResolvedValueOnce(
+        makeResponse(402, {
+          x402Version: 2,
+          accepts: [
+            {
+              scheme: "commerce",
+              network: "eip155:8453",
+              amount: "10000",
+              payTo: "0xaaa",
+              asset: "0xbbb",
+              extra: { operatorAddress: "0xccc", tokenCollector: "0xddd" },
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(makeResponse(200, { ok: true }));
+
+    const { makePaymentCall } = await import("../../../src/payment/negotiator.js");
+    const result = await makePaymentCall("https://example.com/api/commerce", {
+      wallet: createMockWallet(),
+      checkSpendingLimit: () => ({ allowed: true }),
+      recordTransaction: (e) => recorded.push(e),
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.scheme).toBe("commerce");
+    expect(signEscrowPayment).toHaveBeenCalledTimes(1);
+    expect(recorded[0].scheme).toBe("commerce");
+  });
+
   it("records non-200 paid responses as failed", async () => {
     mockFetch
       .mockResolvedValueOnce(
