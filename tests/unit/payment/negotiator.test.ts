@@ -541,4 +541,36 @@ describe("negotiator: probeEndpoint", () => {
     expect(result).not.toBeNull();
     expect(result!.accepts[0].amount).toBe("3000");
   });
+
+  it("turns paymentOptions into accepts (body)", async () => {
+    mockFetch.mockResolvedValueOnce(
+      makeResponse(402, {
+        x402Version: 2,
+        paymentOptions: [
+          { scheme: "exact", network: "eip155:8453", priceAtomic: "7000", payTo: "0xaaa", asset: "0xbbb" },
+        ],
+      }),
+    );
+
+    const { probeEndpoint } = await import("../../../src/payment/negotiator.js");
+    const result = await probeEndpoint("https://example.com/api/v2-body");
+
+    expect(result!.accepts).toHaveLength(1);
+    expect(result!.accepts[0]).toMatchObject({ scheme: "exact", amount: "7000", payTo: "0xaaa" });
+  });
+
+  it("turns paymentOptions into accepts (PAYMENT-REQUIRED header)", async () => {
+    const paymentRequired = {
+      x402Version: 2,
+      paymentOptions: [{ network: "eip155:8453", amount: "8000", payTo: "0xaaa" }],
+    };
+    mockFetch.mockResolvedValueOnce(
+      makeResponse(402, {}, { "payment-required": btoa(JSON.stringify(paymentRequired)) }),
+    );
+
+    const { probeEndpoint } = await import("../../../src/payment/negotiator.js");
+    const result = await probeEndpoint("https://example.com/api/v2-header");
+
+    expect(result!.accepts[0]).toMatchObject({ scheme: "exact", amount: "8000" });
+  });
 });

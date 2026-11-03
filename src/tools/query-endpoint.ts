@@ -1,5 +1,6 @@
 import { probeEndpoint } from "../payment/negotiator.js";
 import { formatUsdc } from "../utils/format.js";
+import { resolveAcceptAmount } from "../payment/amount.js";
 
 export function queryEndpointTool() {
   return {
@@ -42,16 +43,53 @@ export function queryEndpointTool() {
         };
       }
 
+      const accepts = result.accepts ?? [];
+      if (accepts.length === 0) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  status: "no_payment_options",
+                  message: "This endpoint returned 402 but listed no payment options, so it cannot be paid.",
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      }
+
       const summary = {
         x402Version: result.x402Version,
-        paymentOptions: result.accepts.map((a) => ({
-          scheme: a.scheme,
-          network: a.network,
-          price: formatUsdc(BigInt(a.maxAmountRequired ?? a.amount)),
-          priceAtomic: a.maxAmountRequired ?? a.amount,
-          payTo: a.payTo,
-          asset: a.asset,
-        })),
+        // Same price reader call_endpoint pays with, so the preview never
+        // shows a price that the payment would refuse or sign differently.
+        paymentOptions: accepts.map((a) => {
+          try {
+            const atomic = resolveAcceptAmount(a);
+            return {
+              scheme: a.scheme,
+              network: a.network,
+              price: formatUsdc(atomic),
+              priceAtomic: String(atomic),
+              payTo: a.payTo,
+              asset: a.asset,
+            };
+          } catch (err) {
+            const reason = err instanceof Error ? err.message : String(err);
+            return {
+              scheme: a.scheme,
+              network: a.network,
+              price: "invalid",
+              priceAtomic: null,
+              payTo: a.payTo,
+              asset: a.asset,
+              error: `${reason}. call_endpoint will not pay this option.`,
+            };
+          }
+        }),
       };
 
       return {

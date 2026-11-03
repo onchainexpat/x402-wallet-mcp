@@ -54,6 +54,30 @@ export function pickAcceptEntry(
 }
 
 /**
+ * Some servers list their prices as `paymentOptions` (with `priceAtomic`)
+ * instead of `accepts`. Convert that shape to `accepts` so every reader of a
+ * 402 (paying, probing, previewing) sees the same entries.
+ */
+export function normalizePaymentRequired(paymentRequired: PaymentRequired): PaymentRequired {
+  const raw = paymentRequired as unknown as Record<string, unknown>;
+  if (!paymentRequired.accepts && Array.isArray(raw.paymentOptions)) {
+    paymentRequired.accepts = (raw.paymentOptions as Record<string, unknown>[]).map(
+      (opt) => ({
+        scheme: ((opt.scheme as string) ?? "exact") as "exact" | "escrow",
+        network: opt.network as string,
+        amount: ((opt.priceAtomic as string | undefined) ?? (opt.amount as string | undefined)) as string,
+        maxAmountRequired: opt.maxAmountRequired as string | undefined,
+        payTo: opt.payTo as string,
+        asset: opt.asset as string,
+        maxTimeoutSeconds: opt.maxTimeoutSeconds as number | undefined,
+        extra: opt.extra as AcceptEntry["extra"],
+      }),
+    );
+  }
+  return paymentRequired;
+}
+
+/**
  * Make a paid API call. Handles 402 negotiation automatically.
  *
  * Flow:
@@ -137,22 +161,7 @@ export async function makePaymentCall(
     paymentRequired = await initialResponse.json();
   }
 
-  // Normalize v2 paymentOptions to v1 accepts format
-  const raw = paymentRequired as unknown as Record<string, unknown>;
-  if (!paymentRequired.accepts && Array.isArray(raw.paymentOptions)) {
-    paymentRequired.accepts = (raw.paymentOptions as Record<string, unknown>[]).map(
-      (opt) => ({
-        scheme: ((opt.scheme as string) ?? "exact") as "exact" | "escrow",
-        network: opt.network as string,
-        amount: ((opt.priceAtomic as string | undefined) ?? (opt.amount as string | undefined)) as string,
-        maxAmountRequired: opt.maxAmountRequired as string | undefined,
-        payTo: opt.payTo as string,
-        asset: opt.asset as string,
-        maxTimeoutSeconds: opt.maxTimeoutSeconds as number | undefined,
-        extra: opt.extra as AcceptEntry["extra"],
-      }),
-    );
-  }
+  normalizePaymentRequired(paymentRequired);
 
   const accepts = paymentRequired.accepts;
   if (!accepts || accepts.length === 0) {
@@ -380,12 +389,12 @@ export async function probeEndpoint(
     const paymentHeader = response.headers.get("payment-required");
     if (paymentHeader) {
       try {
-        return JSON.parse(atob(paymentHeader));
+        return normalizePaymentRequired(JSON.parse(atob(paymentHeader)));
       } catch {
         // Fall through
       }
     }
-    return await response.json();
+    return normalizePaymentRequired(await response.json());
   } catch {
     return null;
   }

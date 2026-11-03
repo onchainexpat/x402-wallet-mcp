@@ -152,23 +152,7 @@ export function callEndpointTool(wallet: WalletProvider) {
         return formatResult(result, params.url);
       }
 
-      // Normalize v2 paymentOptions to v1 accepts format (same as negotiator)
-      const raw = probeResult as unknown as Record<string, unknown>;
-      if (!probeResult.accepts && Array.isArray(raw.paymentOptions)) {
-        probeResult.accepts = (raw.paymentOptions as Record<string, unknown>[]).map(
-          (opt) => ({
-            scheme: ((opt.scheme as string) ?? "exact") as "exact" | "escrow",
-            network: opt.network as string,
-            amount: ((opt.priceAtomic as string | undefined) ?? (opt.amount as string | undefined)) as string,
-            maxAmountRequired: opt.maxAmountRequired as string | undefined,
-            payTo: opt.payTo as string,
-            asset: opt.asset as string,
-            maxTimeoutSeconds: opt.maxTimeoutSeconds as number | undefined,
-            extra: opt.extra as Record<string, unknown> | undefined,
-          }),
-        );
-      }
-
+      // probeEndpoint has already turned paymentOptions into accepts.
       const accepts = probeResult.accepts;
       if (!accepts || accepts.length === 0) {
         // Can't determine price — require confirmation to be safe
