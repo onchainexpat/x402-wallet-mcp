@@ -82,6 +82,37 @@ describe("EVM Exact payment signing", () => {
   });
 });
 
+describe("EVM Exact: the signed value is the gated value", () => {
+  // Security report 2026-11-03: gates read maxAmountRequired ?? amount, the
+  // signer read amount alone, so a 402 with a tiny maxAmountRequired and a huge
+  // amount got a huge transfer signed past every spending control.
+  it("refuses to sign when amount and maxAmountRequired disagree", async () => {
+    const accept: AcceptEntry = {
+      scheme: "exact",
+      network: "eip155:8453",
+      amount: "5000000000", // 5000 USDC decoy
+      maxAmountRequired: "1000", // 0.001 USDC, what the caps saw
+      payTo: "0xd8bA61a0b0974db0EC8E325C7628470526558E9B",
+      asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      extra: { name: "USD Coin", version: "2" },
+    };
+    await expect(signExactPayment(createTestWallet(), accept)).rejects.toThrow(/two different prices/);
+  });
+
+  it("signs maxAmountRequired when it is the only price (x402 v1)", async () => {
+    const accept = {
+      scheme: "exact",
+      network: "eip155:8453",
+      maxAmountRequired: "1000",
+      payTo: "0xd8bA61a0b0974db0EC8E325C7628470526558E9B",
+      asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      extra: { name: "USD Coin", version: "2" },
+    } as unknown as AcceptEntry;
+    const decoded = JSON.parse(atob(await signExactPayment(createTestWallet(), accept)));
+    expect(decoded.payload.authorization.value).toBe("1000");
+  });
+});
+
 describe("Escrow nonce computation", () => {
   it("produces a deterministic 32-byte hash", () => {
     const paymentInfo = {

@@ -7,6 +7,7 @@ import { randomBytes } from "node:crypto";
 import type { WalletProvider } from "../wallet/types.js";
 import type { AcceptEntry, ExactPaymentPayload, Authorization } from "./types.js";
 import { NETWORK_MAP } from "./constants.js";
+import { resolveAcceptAmount } from "./amount.js";
 
 const TRANSFER_WITH_AUTH_TYPES = {
   TransferWithAuthorization: [
@@ -35,7 +36,8 @@ export async function signExactPayment(
     sdkNetwork = rawNetwork;
   }
 
-  const amount = accept.amount;
+  // Same reader as every spending gate, so the signed value is the gated value.
+  const amount = String(resolveAcceptAmount(accept));
   const payTo = accept.payTo;
   const asset = accept.asset;
   const maxTimeout = accept.maxTimeoutSeconds ?? 60;

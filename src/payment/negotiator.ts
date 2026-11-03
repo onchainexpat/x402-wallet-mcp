@@ -6,6 +6,7 @@ import type { WalletProvider } from "../wallet/types.js";
 import type { AcceptEntry, PaymentRequired, PaymentResult } from "./types.js";
 import { signExactPayment } from "./evm-exact.js";
 import { signEscrowPayment } from "./evm-escrow.js";
+import { resolveAcceptAmount } from "./amount.js";
 import { fetchWithRetry, PAID_REQUEST_TIMEOUT } from "../utils/http.js";
 import { checkMerchantAllowlist } from "../spending/allowlist.js";
 import { getUsdcBalance } from "../utils/balance.js";
@@ -70,6 +71,12 @@ export async function makePaymentCall(
     body?: string;
     headers?: Record<string, string>;
     preferEscrow?: boolean;
+    /**
+     * Highest price the caller approved (e.g. from a probe that decided the
+     * call could run without confirmation). If the paid request quotes more,
+     * nothing is signed.
+     */
+    maxApprovedAtomic?: bigint;
   },
 ): Promise<PaymentResult> {
   const {
@@ -80,6 +87,7 @@ export async function makePaymentCall(
     body,
     headers = {},
     preferEscrow = false,
+    maxApprovedAtomic,
   } = options;
 
   // Step 1: Initial request to get 402
@@ -136,7 +144,7 @@ export async function makePaymentCall(
       (opt) => ({
         scheme: ((opt.scheme as string) ?? "exact") as "exact" | "escrow",
         network: opt.network as string,
-        amount: (opt.priceAtomic as string) ?? (opt.amount as string) ?? "0",
+        amount: ((opt.priceAtomic as string | undefined) ?? (opt.amount as string | undefined)) as string,
         maxAmountRequired: opt.maxAmountRequired as string | undefined,
         payTo: opt.payTo as string,
         asset: opt.asset as string,
@@ -167,9 +175,37 @@ export async function makePaymentCall(
     };
   }
 
-  const amountAtomic = BigInt(accept.maxAmountRequired ?? accept.amount);
   const scheme = accept.scheme;
   const network = accept.network;
+
+  let amountAtomic: bigint;
+  try {
+    amountAtomic = resolveAcceptAmount(accept);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    return {
+      success: false,
+      status: 402,
+      data: { error: "invalid_payment_terms", detail },
+      error: detail,
+      amountPaid: 0n,
+      network,
+      scheme,
+    };
+  }
+
+  if (maxApprovedAtomic !== undefined && amountAtomic > maxApprovedAtomic) {
+    const detail = `Price rose from ${formatUsdc(maxApprovedAtomic)} (approved) to ${formatUsdc(amountAtomic)} between the price check and the payment; not paying`;
+    return {
+      success: false,
+      status: 402,
+      data: { error: "price_changed", approved: formatUsdc(maxApprovedAtomic), quoted: formatUsdc(amountAtomic), detail },
+      error: detail,
+      amountPaid: 0n,
+      network,
+      scheme,
+    };
+  }
 
   // Step 3b: Check merchant allowlist
   const allowlistCheck = checkMerchantAllowlist(accept.payTo, url);

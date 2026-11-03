@@ -16,6 +16,7 @@ import {
 import type { WalletProvider } from "../wallet/types.js";
 import type { AcceptEntry, EscrowPaymentPayload, Authorization, PaymentInfo } from "./types.js";
 import { DEFAULT_CHAIN_ID, ESCROW_ADDRESSES, MAX_UINT48 } from "./constants.js";
+import { resolveAcceptAmount } from "./amount.js";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as Address;
 
@@ -84,7 +85,7 @@ export async function signEscrowPayment(
   accept: AcceptEntry,
 ): Promise<string> {
   const extra = accept.extra ?? {};
-  const amount = accept.maxAmountRequired ?? accept.amount;
+  const amount = String(resolveAcceptAmount(accept));
   const asset = accept.asset;
   const tokenName = extra.name ?? "USD Coin";
   const tokenVersion = extra.version ?? "2";

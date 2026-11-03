@@ -6,7 +6,11 @@ If you discover a security vulnerability in x402-wallet-mcp, please report it re
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Instead, email: **security@onchainexpat.com**
+Instead, report it privately through GitHub:
+
+**https://github.com/onchainexpat/x402-wallet-mcp/security/advisories/new**
+
+(or the **Report a vulnerability** button on the repository's Security tab). Only the maintainers can see the report.
 
 Include:
 - Description of the vulnerability
@@ -54,8 +58,9 @@ This policy covers:
 
 ## Supported Versions
 
-| Version | Supported |
-|---------|-----------|
-| 0.1.x   | Yes       |
+| Version          | Supported |
+|------------------|-----------|
+| Latest release   | Yes       |
+| Anything older   | No        |
 
-We will backport critical security fixes to supported versions.
+Security fixes ship in a new release. Upgrade with `npx x402-wallet-mcp@latest`.

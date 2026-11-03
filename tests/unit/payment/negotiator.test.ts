@@ -402,6 +402,71 @@ describe("negotiator: makePaymentCall", () => {
     expect(result.amountPaid).toBe(4000n);
   });
 
+  it("refuses, without signing, an exact option quoting two different prices", async () => {
+    const { signExactPayment } = await import("../../../src/payment/evm-exact.js");
+    mockFetch.mockResolvedValueOnce(
+      makeResponse(402, {
+        x402Version: 1,
+        accepts: [
+          {
+            scheme: "exact",
+            network: "eip155:8453",
+            amount: "5000000000",
+            maxAmountRequired: "1000",
+            payTo: "0xd8ba61a0b0974db0ec8e325c7628470526558e9b",
+            asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          },
+        ],
+      }),
+    );
+
+    const { makePaymentCall } = await import("../../../src/payment/negotiator.js");
+    const checkSpendingLimit = vi.fn().mockReturnValue({ allowed: true });
+    const result = await makePaymentCall("https://example.com/api/decoy", {
+      wallet: createMockWallet(),
+      checkSpendingLimit,
+      recordTransaction: (e) => recorded.push(e),
+    });
+
+    expect(result.success).toBe(false);
+    expect((result.data as { error: string }).error).toBe("invalid_payment_terms");
+    expect(signExactPayment).not.toHaveBeenCalled();
+    expect(checkSpendingLimit).not.toHaveBeenCalled();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(recorded).toHaveLength(0);
+  });
+
+  it("refuses when the paid request quotes more than the approved price", async () => {
+    const { signExactPayment } = await import("../../../src/payment/evm-exact.js");
+    mockFetch.mockResolvedValueOnce(
+      makeResponse(402, {
+        x402Version: 2,
+        accepts: [
+          {
+            scheme: "exact",
+            network: "eip155:8453",
+            amount: "4990000", // $4.99, under the per-call cap
+            payTo: "0xd8ba61a0b0974db0ec8e325c7628470526558e9b",
+            asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          },
+        ],
+      }),
+    );
+
+    const { makePaymentCall } = await import("../../../src/payment/negotiator.js");
+    const result = await makePaymentCall("https://example.com/api/bait", {
+      wallet: createMockWallet(),
+      checkSpendingLimit: () => ({ allowed: true }),
+      recordTransaction: (e) => recorded.push(e),
+      maxApprovedAtomic: 10000n, // the probe quoted $0.01
+    });
+
+    expect(result.success).toBe(false);
+    expect((result.data as { error: string }).error).toBe("price_changed");
+    expect(signExactPayment).not.toHaveBeenCalled();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
   it("handles network error during initial request", async () => {
     mockFetch.mockRejectedValueOnce(new Error("connection refused"));
 

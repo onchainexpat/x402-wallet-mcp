@@ -1,5 +1,6 @@
 import type { WalletProvider } from "../wallet/types.js";
 import { makePaymentCall, probeEndpoint, pickAcceptEntry } from "../payment/negotiator.js";
+import { resolveAcceptAmount } from "../payment/amount.js";
 import {
   checkSpendingLimit,
   recordSpending,
@@ -158,7 +159,7 @@ export function callEndpointTool(wallet: WalletProvider) {
           (opt) => ({
             scheme: ((opt.scheme as string) ?? "exact") as "exact" | "escrow",
             network: opt.network as string,
-            amount: (opt.priceAtomic as string) ?? (opt.amount as string) ?? "0",
+            amount: ((opt.priceAtomic as string | undefined) ?? (opt.amount as string | undefined)) as string,
             maxAmountRequired: opt.maxAmountRequired as string | undefined,
             payTo: opt.payTo as string,
             asset: opt.asset as string,
@@ -196,12 +197,23 @@ export function callEndpointTool(wallet: WalletProvider) {
         return formatResult(result, params.url);
       }
 
-      const amountAtomic = BigInt(accept.maxAmountRequired ?? accept.amount);
+      let amountAtomic: bigint;
+      try {
+        amountAtomic = resolveAcceptAmount(accept);
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        return formatResult({ success: false, status: 402, data: { error: "invalid_payment_terms", detail }, error: detail }, params.url);
+      }
 
       // Check if under auto-approve threshold
       if (isUnderAutoApproveThreshold(amountAtomic)) {
         recordAutoApproval(amountAtomic);
-        const result = await makePaymentCall(params.url, buildPaymentCallOptions(wallet, params));
+        // Hold the paid request to the price this probe approved: a server
+        // must not quote under the threshold here and more on the real call.
+        const result = await makePaymentCall(params.url, {
+          ...buildPaymentCallOptions(wallet, params),
+          maxApprovedAtomic: amountAtomic,
+        });
         return formatResult(result, params.url);
       }
 
