@@ -220,6 +220,7 @@ For endpoints that use x402r's `commerce` scheme (called `escrow` before April 2
 - **Nonce**: Deterministic, computed from `keccak256(chainId, escrowAddress, paymentInfoHash)`
 - **Expiry**: `validAfter=0`, `validBefore = preApprovalExpiry = now + maxTimeoutSeconds` (capped at one hour). The capture deadline and refund window stay open-ended.
 - **Network**: Base only
+- **Relabelled offers**: some servers label commerce offers `exact` because x402scan only lists `exact`. An `exact` offer whose terms name one of those x402r token collectors and an operator is paid as commerce, since paying it as exact would fail. An `exact` offer naming any other collector stays exact.
 
 The tool auto-detects which scheme to use based on the server's `accepts` array. By default it prefers exact; pass `prefer_escrow: true` to prefer commerce when both are available.
 

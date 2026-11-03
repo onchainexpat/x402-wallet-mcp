@@ -7,7 +7,7 @@ import type { AcceptEntry, PaymentRequired, PaymentResult, PaymentScheme } from 
 import { signExactPayment } from "./evm-exact.js";
 import { signEscrowPayment } from "./evm-escrow.js";
 import { resolveAcceptAmount } from "./amount.js";
-import { isCommerceScheme } from "./commerce.js";
+import { isCommerceScheme, isRelabelledCommerceOffer } from "./commerce.js";
 import { fetchWithRetry, PAID_REQUEST_TIMEOUT } from "../utils/http.js";
 import { checkMerchantAllowlist } from "../spending/allowlist.js";
 import { getUsdcBalance } from "../utils/balance.js";
@@ -55,9 +55,12 @@ export function pickAcceptEntry(
 }
 
 /**
- * Some servers list their prices as `paymentOptions` (with `priceAtomic`)
- * instead of `accepts`. Convert that shape to `accepts` so every reader of a
- * 402 (paying, probing, previewing) sees the same entries.
+ * Put every 402 in one shape, so every reader (paying, probing, previewing)
+ * sees the same entries:
+ * - some servers list their prices as `paymentOptions` (with `priceAtomic`)
+ *   instead of `accepts`; convert that to `accepts`.
+ * - an "exact" offer carrying x402r commerce terms is a relabelled commerce
+ *   offer (see isRelabelledCommerceOffer); call it "commerce".
  */
 export function normalizePaymentRequired(paymentRequired: PaymentRequired): PaymentRequired {
   const raw = paymentRequired as unknown as Record<string, unknown>;
@@ -73,6 +76,11 @@ export function normalizePaymentRequired(paymentRequired: PaymentRequired): Paym
         maxTimeoutSeconds: opt.maxTimeoutSeconds as number | undefined,
         extra: opt.extra as AcceptEntry["extra"],
       }),
+    );
+  }
+  if (Array.isArray(paymentRequired.accepts)) {
+    paymentRequired.accepts = paymentRequired.accepts.map((a) =>
+      a && isRelabelledCommerceOffer(a) ? { ...a, scheme: "commerce" } : a,
     );
   }
   return paymentRequired;

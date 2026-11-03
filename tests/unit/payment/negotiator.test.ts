@@ -372,6 +372,67 @@ describe("negotiator: makePaymentCall", () => {
     expect(recorded[0].scheme).toBe("commerce");
   });
 
+  it("pays an exact-labelled offer with x402r commerce terms as commerce", async () => {
+    const { signEscrowPayment } = await import("../../../src/payment/evm-escrow.js");
+    const { signExactPayment } = await import("../../../src/payment/evm-exact.js");
+    mockFetch
+      .mockResolvedValueOnce(makeResponse(402, { x402Version: 2, accepts: [{
+            scheme: "exact",
+            network: "eip155:8453",
+            amount: "10000",
+            payTo: "0xd8bA61a0b0974db0EC8E325C7628470526558E9B",
+            asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            maxTimeoutSeconds: 60,
+            extra: {
+              name: "USD Coin",
+              version: "2",
+              operatorAddress: "0x1A602eEC594BD9A50D8FD06BCC13D35c18FE68A8",
+              escrowAddress: "0xb9488351E48b23D798f24e8174514F28B741Eb4f",
+              tokenCollector: "0x48ADf6E37F9b31dC2AAD0462C5862B5422C736B8",
+              minFeeBps: 0,
+              maxFeeBps: 1000,
+            },
+          }] }))
+      .mockResolvedValueOnce(makeResponse(200, { ok: true }));
+
+    const { makePaymentCall } = await import("../../../src/payment/negotiator.js");
+    const result = await makePaymentCall("https://padelmaps.org/api/x402r/countries", {
+      wallet: createMockWallet(),
+      checkSpendingLimit: () => ({ allowed: true }),
+      recordTransaction: (e) => recorded.push(e),
+    });
+
+    expect(result.success).toBe(true);
+    expect(signEscrowPayment).toHaveBeenCalledTimes(1);
+    expect(signExactPayment).not.toHaveBeenCalled();
+    expect((signEscrowPayment as any).mock.calls[0][1].scheme).toBe("commerce");
+    expect(recorded[0].scheme).toBe("commerce");
+  });
+
+  it("still pays a plain exact offer as exact", async () => {
+    const { signEscrowPayment } = await import("../../../src/payment/evm-escrow.js");
+    const { signExactPayment } = await import("../../../src/payment/evm-exact.js");
+    mockFetch
+      .mockResolvedValueOnce(
+        makeResponse(402, {
+          x402Version: 2,
+          accepts: [{ scheme: "exact", network: "eip155:8453", amount: "10000", payTo: "0xaaa", asset: "0xbbb", extra: { name: "USD Coin", version: "2" } }],
+        }),
+      )
+      .mockResolvedValueOnce(makeResponse(200, { ok: true }));
+
+    const { makePaymentCall } = await import("../../../src/payment/negotiator.js");
+    await makePaymentCall("https://padelmaps.org/api/x402/countries", {
+      wallet: createMockWallet(),
+      checkSpendingLimit: () => ({ allowed: true }),
+      recordTransaction: (e) => recorded.push(e),
+    });
+
+    expect(signExactPayment).toHaveBeenCalledTimes(1);
+    expect(signEscrowPayment).not.toHaveBeenCalled();
+    expect(recorded[0].scheme).toBe("exact");
+  });
+
   it("records non-200 paid responses as failed", async () => {
     mockFetch
       .mockResolvedValueOnce(
@@ -605,5 +666,30 @@ describe("negotiator: probeEndpoint", () => {
     const result = await probeEndpoint("https://example.com/api/v2-header");
 
     expect(result!.accepts[0]).toMatchObject({ scheme: "exact", amount: "8000" });
+  });
+
+  it("reports an exact-labelled offer with x402r commerce terms as commerce", async () => {
+    mockFetch.mockResolvedValueOnce(makeResponse(402, { x402Version: 2, accepts: [{
+            scheme: "exact",
+            network: "eip155:8453",
+            amount: "10000",
+            payTo: "0xd8bA61a0b0974db0EC8E325C7628470526558E9B",
+            asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            maxTimeoutSeconds: 60,
+            extra: {
+              name: "USD Coin",
+              version: "2",
+              operatorAddress: "0x1A602eEC594BD9A50D8FD06BCC13D35c18FE68A8",
+              escrowAddress: "0xb9488351E48b23D798f24e8174514F28B741Eb4f",
+              tokenCollector: "0x48ADf6E37F9b31dC2AAD0462C5862B5422C736B8",
+              minFeeBps: 0,
+              maxFeeBps: 1000,
+            },
+          }] }));
+
+    const { probeEndpoint } = await import("../../../src/payment/negotiator.js");
+    const result = await probeEndpoint("https://padelmaps.org/api/x402r/countries");
+
+    expect(result!.accepts[0].scheme).toBe("commerce");
   });
 });

@@ -42,6 +42,26 @@ const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 
 export class CommerceTermsError extends Error {}
 
+/**
+ * True for an offer labelled "exact" whose terms are x402r commerce terms: it
+ * names one of x402r's published Base token collectors and an operator. Some
+ * servers relabel commerce offers "exact" because x402scan only lists "exact"
+ * (padelmaps.org does), but paying them as exact always fails: the server's
+ * verifier wants a commerce payment. A real exact offer never names an escrow
+ * token collector. An unknown collector does not count, so such an offer stays
+ * on the plain exact path, which pays the allowlisted payTo.
+ */
+export function isRelabelledCommerceOffer(accept: AcceptEntry): boolean {
+  if (accept.scheme !== "exact") return false;
+  const extra = accept.extra ?? {};
+  const collector = extra.tokenCollector;
+  return (
+    typeof collector === "string" &&
+    typeof extra.operatorAddress === "string" &&
+    BASE_COMMERCE_DEPLOYMENTS.some((d) => d.tokenCollector.toLowerCase() === collector.toLowerCase())
+  );
+}
+
 export interface CommerceContracts {
   escrowAddress: string;
   tokenCollector: string;

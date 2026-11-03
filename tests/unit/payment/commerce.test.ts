@@ -4,6 +4,7 @@ import {
   BASE_COMMERCE_DEPLOYMENTS,
   CommerceTermsError,
   isCommerceScheme,
+  isRelabelledCommerceOffer,
   resolveCommerceContracts,
 } from "../../../src/payment/commerce.js";
 import { computeEscrowNonce, signEscrowPayment } from "../../../src/payment/evm-escrow.js";
@@ -123,5 +124,32 @@ describe("commerce contracts are pinned", () => {
   it("refuses a missing or malformed operator", () => {
     expect(() => resolveCommerceContracts(padelmapsTerms({}, { operatorAddress: undefined }))).toThrow(/operatorAddress/);
     expect(() => resolveCommerceContracts(padelmapsTerms({}, { operatorAddress: "0x123" }))).toThrow(/operatorAddress/);
+  });
+});
+
+describe("exact offers carrying commerce terms", () => {
+  const asExact = (extra: Record<string, unknown> = {}) => ({ ...padelmapsTerms({}, extra), scheme: "exact" }) as AcceptEntry;
+
+  it("recognises padelmaps.org's relabelled x402r offer, any letter case", () => {
+    expect(isRelabelledCommerceOffer(asExact())).toBe(true);
+    expect(isRelabelledCommerceOffer(asExact({ tokenCollector: CURRENT.tokenCollector.toLowerCase() }))).toBe(true);
+    expect(isRelabelledCommerceOffer(asExact({ tokenCollector: EARLIER.tokenCollector, escrowAddress: EARLIER.escrow }))).toBe(true);
+  });
+
+  it("leaves a plain exact offer alone", () => {
+    const plain = { ...padelmapsTerms(), scheme: "exact", extra: { name: "USD Coin", version: "2" } } as AcceptEntry;
+    expect(isRelabelledCommerceOffer(plain)).toBe(false);
+  });
+
+  it("leaves an exact offer naming an unknown collector on the exact path", () => {
+    expect(isRelabelledCommerceOffer(asExact({ tokenCollector: ATTACKER }))).toBe(false);
+  });
+
+  it("needs an operator too", () => {
+    expect(isRelabelledCommerceOffer(asExact({ operatorAddress: undefined }))).toBe(false);
+  });
+
+  it("only applies to offers labelled exact", () => {
+    expect(isRelabelledCommerceOffer(padelmapsTerms())).toBe(false);
   });
 });
