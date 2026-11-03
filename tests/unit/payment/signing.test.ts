@@ -211,12 +211,70 @@ describe("EVM Escrow payment signing", () => {
       "0x32d6AC59BCe8DFB3026F10BcaDB8D00AB218f5b6",
     );
     expect(decoded.payload.authorization.validAfter).toBe("0");
-    expect(decoded.payload.authorization.validBefore).toBe("281474976710655");
+    // Bounded by the server's maxTimeoutSeconds (600 here), not MAX_UINT48,
+    // and equal to preApprovalExpiry, which the contract passes as validBefore.
+    const now = Math.floor(Date.now() / 1000);
+    const validBefore = Number(decoded.payload.authorization.validBefore);
+    expect(validBefore).toBeGreaterThanOrEqual(now + 600 - 5);
+    expect(validBefore).toBeLessThanOrEqual(now + 600);
+    expect(decoded.payload.paymentInfo.preApprovalExpiry).toBe(validBefore);
+    // The merchant's capture deadline and the refund window stay open-ended.
+    expect(decoded.payload.paymentInfo.authorizationExpiry).toBe(281474976710655);
+    expect(decoded.payload.paymentInfo.refundExpiry).toBe(281474976710655);
     expect(decoded.payload.paymentInfo).toBeDefined();
     expect(decoded.payload.paymentInfo.operator).toBe(
       "0xB5337C63D5bC8561CbE1F36aC4f6A366F72BCAF7",
     );
     expect(decoded.accepted).toBeDefined();
     expect(decoded.resource.method).toBe("POST");
+  });
+});
+
+describe("authorization windows are bounded", () => {
+  const escrowAccept = (maxTimeoutSeconds: unknown): AcceptEntry => ({
+    scheme: "escrow",
+    network: "eip155:8453",
+    amount: "4000",
+    payTo: "0xd8bA61a0b0974db0EC8E325C7628470526558E9B",
+    asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    maxTimeoutSeconds: maxTimeoutSeconds as number,
+    extra: {
+      operatorAddress: "0xB5337C63D5bC8561CbE1F36aC4f6A366F72BCAF7",
+      tokenCollector: "0x32d6AC59BCe8DFB3026F10BcaDB8D00AB218f5b6",
+    },
+  });
+  const exactAccept = (maxTimeoutSeconds: unknown): AcceptEntry => ({
+    scheme: "exact",
+    network: "eip155:8453",
+    amount: "2000",
+    payTo: "0xd8bA61a0b0974db0EC8E325C7628470526558E9B",
+    asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    maxTimeoutSeconds: maxTimeoutSeconds as number,
+  });
+  const secondsLeft = (encoded: string) =>
+    Number(JSON.parse(atob(encoded)).payload.authorization.validBefore) - Math.floor(Date.now() / 1000);
+
+  it("caps a server asking for an enormous escrow window at one hour", async () => {
+    const encoded = await signEscrowPayment(createTestWallet(), escrowAccept(10 ** 12));
+    expect(secondsLeft(encoded)).toBeLessThanOrEqual(3600);
+    expect(secondsLeft(encoded)).toBeGreaterThan(3590);
+  });
+
+  it("caps an enormous exact window at one hour", async () => {
+    const encoded = await signExactPayment(createTestWallet(), exactAccept(10 ** 12));
+    expect(secondsLeft(encoded)).toBeLessThanOrEqual(3600);
+  });
+
+  it("adds a string maxTimeoutSeconds as a number, not by gluing digits on", async () => {
+    // "300" used to give now + "300" = a timestamp tens of thousands of years out
+    const encoded = await signExactPayment(createTestWallet(), exactAccept("300"));
+    expect(secondsLeft(encoded)).toBeLessThanOrEqual(300);
+    expect(secondsLeft(encoded)).toBeGreaterThan(290);
+  });
+
+  it.each([undefined, 0, -5, 1.5, "soon", null])("falls back to 60 seconds for %j", async (bad) => {
+    const encoded = await signEscrowPayment(createTestWallet(), escrowAccept(bad));
+    expect(secondsLeft(encoded)).toBeLessThanOrEqual(60);
+    expect(secondsLeft(encoded)).toBeGreaterThan(50);
   });
 });

@@ -8,6 +8,7 @@ import type { WalletProvider } from "../wallet/types.js";
 import type { AcceptEntry, ExactPaymentPayload, Authorization } from "./types.js";
 import { NETWORK_MAP } from "./constants.js";
 import { resolveAcceptAmount } from "./amount.js";
+import { authorizationWindowSeconds } from "./window.js";
 
 const TRANSFER_WITH_AUTH_TYPES = {
   TransferWithAuthorization: [
@@ -40,7 +41,7 @@ export async function signExactPayment(
   const amount = String(resolveAcceptAmount(accept));
   const payTo = accept.payTo;
   const asset = accept.asset;
-  const maxTimeout = accept.maxTimeoutSeconds ?? 60;
+  const maxTimeout = authorizationWindowSeconds(accept.maxTimeoutSeconds);
   const extra = accept.extra ?? {};
   const tokenName = extra.name ?? "USD Coin";
   const tokenVersion = extra.version ?? "2";

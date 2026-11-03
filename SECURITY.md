@@ -39,6 +39,7 @@ This policy covers:
 - **Service disappearance**: If this package or the x402 provisioning service goes offline, you can always export your private key at [home.privy.io](https://home.privy.io) using your linked email.
 - **Runaway spending**: Per-call maximum and daily cap enforced locally before signing.
 - **Replay attacks**: Exact payments use random nonces. Escrow payments use deterministic nonces tied to payment parameters.
+- **Standing authorizations**: Every signed payment expires after the server's stated timeout (`maxTimeoutSeconds`, capped at one hour), so one the server never uses cannot be redeemed later. For escrow this is the pre-approval deadline. The merchant's capture deadline and the refund window stay open-ended.
 - **File permission escalation**: Config files created with `0600` permissions.
 
 ### What x402-wallet-mcp Does NOT Protect Against

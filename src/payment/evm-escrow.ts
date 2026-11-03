@@ -17,6 +17,7 @@ import type { WalletProvider } from "../wallet/types.js";
 import type { AcceptEntry, EscrowPaymentPayload, Authorization, PaymentInfo } from "./types.js";
 import { DEFAULT_CHAIN_ID, ESCROW_ADDRESSES, MAX_UINT48 } from "./constants.js";
 import { resolveAcceptAmount } from "./amount.js";
+import { authorizationWindowSeconds } from "./window.js";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as Address;
 
@@ -96,13 +97,24 @@ export async function signEscrowPayment(
   // Generate salt
   const saltHex = `0x${randomBytes(32).toString("hex")}`;
 
+  // The signed authorization only has to last until the server settles, which
+  // it promises within maxTimeoutSeconds. The escrow contract hands
+  // preApprovalExpiry to receiveWithAuthorization as validBefore, so the two
+  // must be the same number. (Both used to be MAX_UINT48: a never-expiring
+  // authorization if the server held on to it.)
+  // authorizationExpiry (the merchant's deadline to capture) and refundExpiry
+  // stay open-ended: servers require a long capture window (padelmaps.org
+  // refuses under 24h) and a long refund window only protects the payer.
+  const preApprovalExpiry =
+    Math.floor(Date.now() / 1000) + authorizationWindowSeconds(accept.maxTimeoutSeconds);
+
   // Build PaymentInfo (payer-agnostic for nonce computation)
   const paymentInfo: PaymentInfo = {
     operator: operatorAddress,
     receiver: accept.payTo,
     token: asset,
     maxAmount: String(amount),
-    preApprovalExpiry: MAX_UINT48,
+    preApprovalExpiry,
     authorizationExpiry: MAX_UINT48,
     refundExpiry: MAX_UINT48,
     minFeeBps: (extra.minFeeBps as number) ?? 0,
@@ -131,7 +143,7 @@ export async function signEscrowPayment(
     to: tokenCollector as `0x${string}`,
     value: BigInt(amount),
     validAfter: 0n,
-    validBefore: BigInt(MAX_UINT48),
+    validBefore: BigInt(preApprovalExpiry),
     nonce: nonce as `0x${string}`,
   };
 
@@ -147,7 +159,7 @@ export async function signEscrowPayment(
     to: tokenCollector as string,
     value: String(amount),
     validAfter: "0",
-    validBefore: String(MAX_UINT48),
+    validBefore: String(preApprovalExpiry),
     nonce,
   };
 
