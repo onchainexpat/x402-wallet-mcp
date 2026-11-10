@@ -10,6 +10,7 @@ import { resolveAcceptAmount } from "./amount.js";
 import { isCommerceScheme, isRelabelledCommerceOffer } from "./commerce.js";
 import { fetchWithRetry, PAID_REQUEST_TIMEOUT } from "../utils/http.js";
 import { checkMerchantAllowlist } from "../spending/allowlist.js";
+import { checkWithScrewtape, isScrewtapeGuardEnabled } from "../spending/screwtape-guard.js";
 import { getUsdcBalance } from "../utils/balance.js";
 import { formatUsdc } from "../utils/format.js";
 import { logger } from "../utils/logger.js";
@@ -257,6 +258,28 @@ export async function makePaymentCall(
       network,
       scheme,
     };
+  }
+
+  // Step 4a: Optional external spend check (off unless SCREWTAPE_GUARD=1)
+  if (isScrewtapeGuardEnabled()) {
+    const guardCheck = await checkWithScrewtape({
+      url,
+      payTo: accept.payTo,
+      amountAtomic,
+      network,
+      asset: accept.asset,
+    });
+    if (!guardCheck.allowed) {
+      return {
+        success: false,
+        status: 402,
+        data: { error: "screwtape_blocked", detail: guardCheck.reason },
+        error: guardCheck.reason,
+        amountPaid: 0n,
+        network,
+        scheme,
+      };
+    }
   }
 
   // Step 4b: Pre-flight balance check

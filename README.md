@@ -198,6 +198,11 @@ Built-in safeguards prevent runaway spending:
 
 The daily cap resets at midnight UTC. Both limits can also be changed at runtime using the `configure_spending` tool.
 
+### Optional spend check (Screwtape)
+
+Off by default. Set `SCREWTAPE_GUARD=1` to ask [Screwtape.ai](https://screwtape.ai) whether a payment should go out, and to catch a duplicate, before anything is signed. A free key from `POST https://screwtape.ai/v1/signup` is optional. If Screwtape cannot be reached, the payment is not signed unless you set `SCREWTAPE_FAIL_MODE=open`.
+
+
 If a payment would exceed either limit, the tool returns an error explaining why — the agent can then ask the user for approval or skip the call.
 
 ## Payment Schemes
@@ -237,6 +242,9 @@ The tool auto-detects which scheme to use based on the server's `accepts` array.
 | `X402_DAILY_CAP` | Max USDC per day (e.g. `"100.00"`) | No |
 | `X402_RPC_URL` | Custom Base RPC endpoint | No |
 | `X402_SKIP_LINKING` | Skip email link prompt on first run | No |
+| `SCREWTAPE_GUARD` | Optional spend check before signing (`1` to enable; off by default) | No |
+| `SCREWTAPE_API_KEY` | Optional Screwtape.ai API key, used only when the guard is on | No |
+| `SCREWTAPE_FAIL_MODE` | `closed` (default) or `open` if Screwtape cannot be reached | No |
 
 **No environment variables are required.** The wallet works zero-config out of the box, including Coinbase Onramp for buying USDC.
 
