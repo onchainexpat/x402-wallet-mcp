@@ -181,6 +181,9 @@ export async function makePaymentCall(
       error: "Server returned 402 but no payment options",
     };
   }
+  if (paymentRequired.x402Version !== 1 && paymentRequired.x402Version !== 2) {
+    return { success: false, status: 402, data: paymentRequired, error: "Unsupported x402 protocol version" };
+  }
 
   // Step 3: Pick best accept entry
   const accept = pickAcceptEntry(accepts, preferEscrow);
@@ -293,7 +296,7 @@ export async function makePaymentCall(
     if (isCommerceScheme(scheme)) {
       xPayment = await signEscrowPayment(wallet, accept);
     } else {
-      xPayment = await signExactPayment(wallet, accept);
+      xPayment = await signExactPayment(wallet, accept, paymentRequired);
     }
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
@@ -312,7 +315,7 @@ export async function makePaymentCall(
     method,
     headers: {
       ...requestHeaders,
-      "X-PAYMENT": xPayment,
+      [paymentRequired.x402Version === 2 && scheme === "exact" ? "PAYMENT-SIGNATURE" : "X-PAYMENT"]: xPayment,
     },
     body,
     retries: 0, // Don't retry after signing — authorization might be consumed

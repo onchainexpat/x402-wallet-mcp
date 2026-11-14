@@ -187,6 +187,51 @@ The tool returns:
 }
 ```
 
+
+### Example: Register and Call a Custom x402 Source
+
+Services that publish a `/.well-known/x402` document can be added without changing the wallet package. For example, this third-party CSV preflight service publishes a compatible discovery document:
+
+```
+You: "Add https://duet-csv-preflight.timbeaux-sora.chatgpt.site as an endpoint source"
+Claude: Using add_endpoint_source...
+        ✓ Source added
+        ✓ Found POST /v1/preflight
+```
+
+Probe the endpoint before paying:
+
+```json
+{
+  "url": "https://duet-csv-preflight.timbeaux-sora.chatgpt.site/v1/preflight",
+  "method": "POST"
+}
+```
+
+The endpoint advertises an exact USDC payment on Base. Because the merchant allowlist is enabled by default, allow the advertised payee before the first paid call:
+
+```
+You: "Allow merchant 0xa9a52a066e342e2ED2488BBdb9fAd95EFd3D9FD4"
+Claude: Using manage_allowlist...
+        ✓ Merchant allowed
+```
+
+Then call it with a JSON body:
+
+```json
+{
+  "url": "https://duet-csv-preflight.timbeaux-sora.chatgpt.site/v1/preflight",
+  "method": "POST",
+  "body": "{\"csv\":\"id,name\\n1,Alice\\n\",\"requiredFields\":[\"id\"],\"keyField\":\"id\"}"
+}
+```
+
+At the time this example was added, the service advertised a price of $0.005 USDC per successful call. Always trust the live 402 payment requirements over documentation, and keep your configured spending limits in place.
+
+This service requires x402 v2 exact payments in the `PAYMENT-SIGNATURE` header. The v2 signing and retry path is covered by mocked tests in this PR; no live paid call has been made for this example. Check the live discovery document and 402 response before integrating it into a CSV import.
+
+> This is a third-party interoperability example and is not maintained or endorsed by x402-wallet-mcp.
+
 ## Spending Controls
 
 Built-in safeguards prevent runaway spending:
